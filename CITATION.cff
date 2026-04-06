@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use masertrack in your research, please cite it as below."
+type: software
+title: "masertrack"
+abstract: "VLBI maser spot-to-feature identification, cross-epoch matching, and astrometric fitting pipeline."
+authors:
+  - family-names: "Orosz"
+    given-names: "Gabor"
+keywords:
+  - VLBI
+  - maser
+  - astrometry
+  - parallax
+  - radio astronomy
+license: BSD-3-Clause
+repository-code: "https://github.com/chickin/masertrack"
