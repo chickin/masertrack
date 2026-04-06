@@ -1,5 +1,7 @@
 # masertrack
 
+**Version 1.0.0** | [BSD-3-Clause](LICENSE) | [Cite](CITATION.cff)
+
 **VLBI maser spot-to-feature identification, cross-epoch matching, and astrometric fitting.**
 
 `masertrack` is a suite of three Python scripts that take the raw output of VLBI spectral-line Gaussian spot fitting (AIPS MFIT/SAD, JMFIT) and produce cleaned maser feature catalogs, cross-epoch matched feature groups, and parallax/proper motion fits.
@@ -18,14 +20,27 @@ This README covers `masertrack_identify.py`. Documentation for `masertrack_match
 
 ## Requirements
 
+### Required
+
 - Python 3.8 or later
 - numpy
 - pandas
-- matplotlib (optional, for plots)
 
-Install dependencies:
+### Optional (recommended)
 
-    pip install numpy pandas matplotlib
+- **matplotlib** — PNG diagnostic plots at each pipeline step and summary dashboard. Without this, no plots are generated but the pipeline runs fine and produces text output.
+- **plotly** — Interactive HTML plots with hover info, zoom, pan, and legend toggles. Opens in your browser. Highly recommended for inspecting results.
+- **adjustText** — Prevents label overlap on feature map plots. Without it, labels may overlap for crowded fields. A small quality-of-life improvement.
+
+### Install everything
+
+    pip3 install numpy pandas matplotlib plotly adjustText
+
+Or install only what you need:
+
+    pip3 install numpy pandas              # minimum (text output only)
+    pip3 install numpy pandas matplotlib   # adds PNG plots
+    pip3 install numpy pandas matplotlib plotly adjustText  # full functionality
 
 ## Quick start
 
