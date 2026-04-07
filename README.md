@@ -1,22 +1,18 @@
 # masertrack
 
-**Version 1.0.0** | [BSD-3-Clause](LICENSE) | [Cite](CITATION.cff)
-
 **VLBI maser spot-to-feature identification, cross-epoch matching, and astrometric fitting.**
 
-`masertrack` is a suite of three Python scripts that take the raw output of VLBI spectral-line Gaussian spot fitting (AIPS MFIT/SAD, JMFIT) and produce cleaned maser feature catalogs, cross-epoch matched feature groups, and parallax/proper motion fits.
+| Script | Version | What it does | Input | Output |
+|--------|---------|-------------|-------|--------|
+| `masertrack_identify.py` | 1.0.0 | Spots → Features (per epoch) | MFIT/SAD spot table | Feature catalog + spot table |
+| `masertrack_match.py` | 1.0.0 | Features → Groups (cross-epoch) | Feature catalogs + epoch table | Matched groups + tracked positions |
+| `masertrack_fit.py` | — | Groups → Astrometry (planned) | Tracked positions | Parallax + proper motion |
+
+[BSD-3-Clause](LICENSE) | [Cite](CITATION.cff)
+
+`masertrack` is a suite of Python scripts that take the raw output of VLBI spectral-line Gaussian spot fitting (AIPS MFIT/SAD, JMFIT) and produce cleaned maser feature catalogs, cross-epoch matched feature groups, and parallax/proper motion fits.
 
 It works with any VLBI array: VERA, VLBA, LBA, EVN, KaVA, EAVN, or any other interferometric array that produces spectral-line image cubes with fitted emission peaks.
-
-## The three scripts
-
-| Script | What it does | Input | Output |
-|--------|-------------|-------|--------|
-| `masertrack_identify.py` | Spots -> Features (per epoch) | MFIT/SAD spot table | Feature catalog + spot table |
-| `masertrack_match.py` | Features -> Groups (cross-epoch) | Multiple feature catalogs | Matched feature groups |
-| `masertrack_fit.py` | Groups -> Astrometry | Matched groups | Parallax & proper motion |
-
-This README covers `masertrack_identify.py`. Documentation for `masertrack_match.py` and `masertrack_fit.py` will be added as they are developed.
 
 ## Requirements
 
@@ -30,7 +26,7 @@ This README covers `masertrack_identify.py`. Documentation for `masertrack_match
 
 - **matplotlib** — PNG diagnostic plots at each pipeline step and summary dashboard. Without this, no plots are generated but the pipeline runs fine and produces text output.
 - **plotly** — Interactive HTML plots with hover info, zoom, pan, and legend toggles. Opens in your browser. Highly recommended for inspecting results.
-- **adjustText** — Prevents label overlap on feature map plots. Without it, labels may overlap for crowded fields. A small quality-of-life improvement.
+- **adjustText** — Prevents label overlap on feature map plots. A small quality-of-life improvement.
 
 ### Install everything
 
@@ -41,6 +37,10 @@ Or install only what you need:
     pip3 install numpy pandas              # minimum (text output only)
     pip3 install numpy pandas matplotlib   # adds PNG plots
     pip3 install numpy pandas matplotlib plotly adjustText  # full functionality
+
+---
+
+# masertrack_identify.py
 
 ## Quick start
 
@@ -107,13 +107,21 @@ One row per feature with summary properties. Key columns:
 | `x_err_wmean` | Weighted standard error of the mean -- best position uncertainty (mas) |
 | `I_peak` | Peak intensity (Jy/beam) |
 
-### Spot table (`*_features_spots.txt`)
+### Spot table (`*_spots.txt`)
 
 One row per spot with its feature assignment (`feature_id` column). This is the file used by `masertrack_match.py` and `masertrack_fit.py` for parallax fitting -- tracking individual velocity channels across epochs (see Burns et al. 2015, MNRAS 453, 3163).
 
 ### Why two output files?
 
-Burns et al. (2015) tested three approaches to parallax fitting and found that tracking individual velocity channels ("individual fitting" and "group fitting") gave reliable parallaxes, while flux-weighted feature positions ("feature fitting") failed when masers had complex velocity structure. The spot table preserves individual channel positions for parallax fitting, while the feature catalog provides the summary properties needed for kinematic analysis and cross-epoch matching.
+Burns et al. (2015) tested three approaches to parallax fitting for their VERA observations of S235AB-MIR:
+
+- **Individual fitting** (same channel tracked across epochs): reliable
+- **Group fitting** (multiple channels, common parallax, independent proper motions per channel): most reliable
+- **Feature fitting** (flux-weighted position of 3 brightest spots): failed for features with complex velocity structure or burst behavior
+
+Their conclusion: when masers have variable components, flux-weighted feature positions give unreliable parallaxes because changing relative brightnesses shift the centroid. Individual channel positions are stable.
+
+**For `masertrack_match.py`:** Match features by position and velocity across epochs (using the feature catalog), then within each matched group, identify the specific channels that persist and feed those individual spot positions to `masertrack_fit.py`. This gives the best of both worlds -- feature grouping for identification, channel-level tracking for astrometry.
 
 ## Command-line options
 
@@ -121,13 +129,14 @@ Burns et al. (2015) tested three approaches to parallax fitting and found that t
 
     --guided          Interactive step-by-step mode (recommended for first pass)
     --no-plots        Disable all plots (for batch/script use)
+    --show-plots      Open matplotlib windows (default: save PNG only)
 
 ### Beam and array parameters
 
-    --beam-major F    Beam major axis in mas
-    --beam-minor F    Beam minor axis in mas
-    --beam-pa F       Beam position angle in degrees
-    --chan-spacing F   Channel spacing in km/s
+    --beam-major F    Beam major axis in mas (default: auto-detect)
+    --beam-minor F    Beam minor axis in mas (default: auto-detect)
+    --beam-pa F       Beam position angle in degrees (default: auto-detect)
+    --chan-spacing F   Channel spacing in km/s (default: auto-detect)
     --n-stations N    Number of array stations (sets sidelobe threshold)
 
 ### Pipeline tuning
@@ -139,10 +148,12 @@ Burns et al. (2015) tested three approaches to parallax fitting and found that t
     --min-dip N         Min consecutive drops to trigger peak splitting (default: 2)
     --n-brightest N     Number of brightest spots for position averaging (default: 3)
     --exclude FILE      File listing spot indices to exclude (one per line, # for comments)
+    --include FILE      File listing spot indices to force-include (overrides sidelobe flags)
 
 ### Output
 
     -o FILE             Output filename (default: inputname_features.txt)
+    --outdir DIR        Output directory (default: .)
 
 ## Usage examples
 
@@ -171,7 +182,7 @@ If you find a bad spot (say, index 42 is a sidelobe that was not flagged), creat
 
     from masertrack_identify import MaserTrackIdentify
 
-    m = MaserTrackIdentify("input.txt", interactive=True, n_stations=4)
+    m = MaserTrackIdentify("input.txt", n_stations=4)
     m.step1_parse()
     m.step2_deduplicate()
     m.step3_flag_sidelobes()
@@ -185,22 +196,13 @@ If you find a bad spot (say, index 42 is a sidelobe that was not flagged), creat
 
     m.save("output_features.txt")
 
-## Setting up the GitHub repository
+## Output plots
 
-    # 1. Create the repo on GitHub (github.com/chickin/masertrack)
-    # 2. Clone and add files:
-    git clone https://github.com/chickin/masertrack.git
-    cd masertrack
-    cp /path/to/masertrack_identify.py .
-    cp /path/to/README.md .
-    cp /path/to/CODE_BREAKDOWN.md .
-    cp /path/to/LICENSE .
-    cp /path/to/CITATION.cff .
-
-    # 3. Commit and push:
-    git add -A
-    git commit -m "Initial commit: masertrack_identify.py v1.0"
-    git push origin main
+| File | Content |
+|------|---------|
+| `*_s1.png` – `*_s6.png` | Step-by-step diagnostics |
+| `*_summary.png` | Pipeline dashboard (9 panels) |
+| `*_interactive.html` | Interactive plotly (hover, zoom, legend toggles) |
 
 ## Testing locally
 
@@ -213,7 +215,7 @@ If you find a bad spot (say, index 42 is a sidelobe that was not flagged), creat
 
     # 3. Check the output files:
     less your_mfit_output_features.txt
-    less your_mfit_output_features_spots.txt
+    less your_mfit_output_spots.txt
 
     # 4. If plots don't display, try setting the backend:
     #    export MPLBACKEND=TkAgg   (Linux)
@@ -223,13 +225,236 @@ If you find a bad spot (say, index 42 is a sidelobe that was not flagged), creat
 
 See `CODE_BREAKDOWN.md` for a detailed explanation of each step, the physics behind each parameter choice, and how the algorithms relate to Ross Burns' original Fortran pipeline.
 
+---
+
+# masertrack_match.py
+
+## Quick start
+
+    python masertrack_match.py epoch_table.txt --input-dir ./input --outdir results
+    open results/match_inverse_interactive.html
+
+## What does masertrack_match.py do?
+
+Takes per-epoch feature catalogs from `masertrack_identify.py` and finds which features persist across epochs — which detections at similar positions and velocities across different observation dates represent the same physical maser cloud tracked over months to years.
+
+### Pipeline overview
+
+    Per-epoch feature catalogs (e.g., 9 epochs × 2 PR modes = 18 files)
+         |
+    Step 1: Parse — read epoch table, discover feature/spot files, detect beam
+         |
+    Step 2: Align — apply inverse PR shifts, reference spot correction, normal PR anchor
+         |
+    Step 3: Match — growing-chain matching with velocity drift tracking
+         |              → trajectory smoothness check (flag outlier epochs)
+         |              → velocity drift computation per group
+         |              → quality grading A–F
+         |
+    Step 4: Save — matched groups, tracked spots/features, corrections template
+         |
+    Output: Group catalog + tracked positions for π fitting
+
+## Input files
+
+### Epoch table (required)
+
+A space-separated text file describing the observations. One row per epoch:
+
+    # epoch      date         mjd      dec_year     n_sta  inv_shift_ra   inv_shift_dec  inv_qso_ra_s     inv_qso_dec_s
+      r14094b    2014-04-04   56751    2014.254795  4            0.0000        0.0000     57.84845310      12.585093
+      r14163a    2014-06-12   56820    2014.443836  4           -1.1419       -0.1110     57.84853710      12.584982
+
+**Where each column comes from:**
+
+| Column | Description | Source |
+|--------|-------------|--------|
+| `epoch` | Observation code (must match filenames) | Your naming convention |
+| `date` | ISO date | Observation log |
+| `mjd` | Modified Julian Date | Observation log or AIPS header |
+| `dec_year` | Decimal year | Computed from MJD |
+| `n_sta` | Number of stations with fringes | Check SNEDT/SNPLT in AIPS reduction log |
+| `inv_qso_ra_s` | Quasar RA seconds from JMFIT | B-beam inverse log: `RA 18 20 XX.XXXXXXXX` |
+| `inv_qso_dec_s` | Quasar Dec arcseconds from JMFIT | B-beam inverse log: `DEC -25 28 XX.XXXXXX` |
+| `inv_shift_ra/dec` | Maser motion shifts for alignment (mas) | Computed from quasar positions (see below) |
+
+**How to compute the inverse PR shifts from JMFIT quasar positions:**
+
+In your B-beam inverse reduction log, the JMFIT output on the phase reference source gives:
+
+    JMFIT1:  RA 18 20 57.84845310 +/-  0.00000125468
+    JMFIT1:  DEC -25 28 12.585093 +/-   0.0000402851
+
+The RA seconds (57.84845310) and Dec arcseconds (12.585093) go in `inv_qso_ra_s` and `inv_qso_dec_s`. The shifts are then:
+
+    dQ = Q(epoch_i) - Q(epoch_0)           # quasar position change vs first epoch
+    shift_ra  = -(dQ_ra_seconds × 15 × cos(dec) × 1000) mas
+    shift_dec = +(dQ_dec_seconds × 1000) mas
+
+Set epoch 0 shifts to 0.0. The positive sign on Dec accounts for the sign convention at negative (southern) declinations. The code handles everything else.
+
+### Feature and spot files (required)
+
+Output from `masertrack_identify.py`, placed in the `--input-dir` directory:
+
+    {epoch}_{mode}_features.txt     e.g. r14094b_inverse_features.txt
+    {epoch}_{mode}_spots.txt        e.g. r14094b_inverse_spots.txt
+
+Both `normal` and `inverse` modes are processed independently if present.
+
+## Output files
+
+### Per mode (normal and/or inverse)
+
+| File | Description | Used by |
+|------|-------------|---------|
+| `*_groups.txt` | One row per matched group: velocity, grade, position, scatter, drift rate | Inspection, publication sky maps |
+| `*_spots_tracked.txt` | Individual channel positions across epochs | **Primary input for `masertrack_fit.py`** |
+| `*_features_tracked.txt` | Feature-level positions across epochs | Alternative input for fitting |
+| `*_id_mapping.txt` | group_id ↔ feature_id per epoch | Tracing back to identify output |
+| `*_diagnostic.png` | 6-panel diagnostic (sky, V, RA/Dec vs time, residuals) | Quality assessment |
+| `*_dashboard.png` | 4-panel overview (grades, stats, coverage, drift) | Quick summary |
+| `*_interactive.html` | Interactive plotly (6 panels + spot-level view) | Detailed inspection |
+
+### Utility files
+
+| File | Purpose |
+|------|---------|
+| `match_comparison.png` | Normal vs inverse side-by-side (when both modes present) |
+| `match_corrections_template.txt` | Editable template for iterative correction |
+| `match_ref_maser_table.txt` | Reference maser velocity drift and alignment corrections per epoch — already applied during alignment, this file is for inspection only |
+
+### What goes forward to π fitting?
+
+**For spot-level fitting (recommended, Burns et al. 2015):** Use `*_spots_tracked.txt`. Each row is one velocity channel at one epoch within a matched group. The fitter tracks the same `vlsr` channel across epochs within each `group_id`, fitting for a common π and independent μ per channel.
+
+**For feature-level fitting:** Use `*_features_tracked.txt`. Each row is the flux-weighted feature centroid at one epoch. Simpler but less reliable when masers have complex velocity structure.
+
+**Key columns for fitting:**
+
+| Column | Role |
+|--------|------|
+| `group_id` | Which physical maser cloud |
+| `dec_year` | Time coordinate for fitting |
+| `vlsr` | Channel identity (track same channel across epochs) |
+| `x`, `y` | Position offsets (mas) |
+| `x_err`, `y_err` | Position error (mas, floor = beam/(2×SNR), min 0.001 mas) |
+| `use_for_pi` | 1 = include in fit, 0 = flagged epoch or trajectory outlier |
+
+## Corrections workflow
+
+The pipeline supports iterative refinement:
+
+1. **Run once** — inspect diagnostic plots and console output
+2. **Edit the corrections template** (`match_corrections_template.txt`) — uncomment lines to exclude bad epochs or remove mismatched epochs from specific groups
+3. **Re-run** with `--corrections my_edits.txt`
+4. **Repeat** until the matching looks clean
+
+Example corrections file:
+
+    # Exclude epoch from parallax fitting
+    EPOCH  r14307a  use_for_pi=0
+
+    # Remove a mismatched epoch from group G6
+    GROUP  G6  r15037b  EXCLUDE
+
+## Quality grading
+
+Groups are graded A–F based on how many unflagged epochs they appear in:
+
+| Grade | Criterion | Parallax quality |
+|-------|-----------|-----------------|
+| A | All unflagged epochs | Best candidates |
+| B | ≥2/3 of unflagged epochs and ≥4 epochs | Good candidates |
+| C | ≥4 epochs | Usable with caution |
+| D | 3 epochs | Marginal |
+| E | 2 epochs | Proper motion only |
+| F | 1 epoch | Not matched |
+
+Flagged epochs (e.g., 3-station observations with systematic offsets) are excluded from the grading denominator, so a group detected in all 8 unflagged epochs out of 9 total gets Grade A.
+
+## Interactive HTML plot
+
+The plotly interactive HTML has 6 panels in 3 rows:
+
+- **Row 1**: Sky map (rainbow by velocity, opacity encodes time: faint=early, solid=late) + velocity tracking (shows drift)
+- **Row 2**: RA offset vs time + Dec offset vs time
+- **Row 3**: Spot sky map (individual spots colored by epoch, sized by flux) + spot velocity vs epoch (shows channel persistence)
+
+Click legend to toggle groups. "Show all"/"Hide all" buttons. Hover for epoch, position, velocity, flags, drift rate.
+
+## Command-line options
+
+### Input/output
+
+    epoch_table           Epoch table file (required, positional argument)
+    --input-dir DIR       Directory with feature/spot files (default: ./input)
+    --outdir DIR          Output directory (default: .)
+    --corrections FILE    Corrections file for manual overrides
+
+### Beam parameters
+
+    --beam-major F        Beam major axis in mas (default: auto-detect)
+    --beam-minor F        Beam minor axis in mas (default: auto-detect)
+    --chan-spacing F       Channel spacing in km/s (default: auto-detect)
+
+### Matching parameters
+
+    --match-radius F      Match radius × beam geo mean (default: 3.0)
+    --vel-tolerance F     Velocity tolerance in channels (default: 4)
+    --max-pm F            Max proper motion in mas/yr (default: 5.0)
+    --min-epochs N        Min epochs for display threshold (default: 3)
+
+### Plot control
+
+    --no-plots            Disable all plots
+    --show-plots          Open matplotlib windows (default: save PNG only)
+
+## Using from Python
+
+    from masertrack_match import MaserTrackMatch
+
+    m = MaserTrackMatch("epoch_table.txt", input_dir="./input", outdir="results")
+    m.run()
+
+    # Access results
+    for mode, matcher in m.matchers.items():
+        print(f"{mode}: {len(matcher.groups)} groups")
+        for g in matcher.groups:
+            if g["grade"] in "AB":
+                print(f"  G{g['group_id']} V={g['vlsr_peak']:.1f} {g['grade']}")
+
+## Testing locally
+
+    # 1. Prepare input
+    mkdir input
+    cp *_features.txt *_spots.txt input/
+
+    # 2. Run
+    python3 masertrack_match.py your_epoch_table.txt --input-dir ./input --outdir results
+
+    # 3. Inspect
+    open results/match_inverse_interactive.html
+    less results/match_inverse_groups.txt
+
+    # 4. If plots don't display:
+    #    export MPLBACKEND=TkAgg   (Linux)
+    #    export MPLBACKEND=MacOSX  (macOS)
+
+## How the algorithms work
+
+See `CODE_BREAKDOWN.md` for a detailed explanation of the matching algorithm, alignment procedure, trajectory checking, and how each parameter choice relates to the physics of maser astrometry.
+
+---
+
 ## Credits
 
 - **Pipeline design**: Gabor Orosz
-- **Chain-linking algorithm**: Adapted from Ross Burns' Fortran code (Imfit2Spots, Spots2Features, MultiPeakCheck, ThreeStrongest)
+- **Chain-linking algorithm**: Adapted from Ross Burns' Fortran code (Burns et al. 2015, MNRAS 453, 3163)
 - **MFIT/SAD spot fitting and csad converter**: Hiroshi Imai (2004)
-- **Sidelobe scaling theory**: Thompson, Moran & Swenson (2017); Steinberg (1972); Middelberg & Bach (2008)
-- **Feature vs spot parallax methodology**: Burns et al. (2015, MNRAS 453, 3163); Reid et al. (2009a, ApJ 693, 397)
+- **Sidelobe scaling theory**: Thompson, Moran & Swenson (2017); Steinberg (1972)
+- **Astrometry methodology**: Reid et al. (2009, ApJ 693, 397); Hirota et al. (2020, PASJ 72, 50)
+- **Inverse PR technique**: Imai et al. (2012, PASJ 64, 142); Burns et al. (2015)
 - **Code implementation**: Claude (Anthropic), 2026
 
 ## License

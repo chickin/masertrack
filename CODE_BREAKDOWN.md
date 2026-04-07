@@ -1,31 +1,35 @@
-# masertrack_identify.py - Detailed Code Breakdown
+# masertrack — Detailed Code Breakdown
 
-This document explains every section of the `masertrack_identify.py` pipeline: what the code does, why it does it that way, and what physical reasoning underlies each choice.
+What the code does, why it does it that way, and the physical reasoning behind each choice.
+
+---
+
+# Part 1: masertrack_identify.py
 
 ## File structure
 
 ```
 Lines     Section
 ------    -------
-1-95      Module docstring (credits, usage, description)
-97-123    Imports (numpy required; pandas, matplotlib optional)
-126-167   Default parameters (DEFAULTS dictionary)
-170-198   BeamInfo data class
-201-280   MaserTrackIdentify constructor and exclusion list loader
-283-430   Step 1 - Parse
-433-540   Step 2 - Deduplicate
-543-680   Step 3 - Sidelobe flagging
-683-820   Step 4 - Feature grouping (chain-linking)
-823-890   Step 5 - Multi-peak splitting
-893-1020  Step 6 - Summarize
-1023-1045 run() - execute all steps
-1048-1120 save() and fixed-width writer
-1123-1215 Plotting functions
-1218-1290 Guided mode
-1293-1405 Command-line interface
+1-30      Module docstring (credits, version, description)
+32-60     Imports (graceful failure with install instructions)
+63-90     Rainbow colormap definition
+93-115    Default parameters (DEFAULTS dictionary)
+118-140   BeamInfo data class
+143-260   MaserTrackIdentify constructor
+263-370   Step 1 - Parse
+373-430   Step 2 - Deduplicate
+433-560   Step 3 - Sidelobe flagging
+563-700   Step 4 - Feature grouping (chain-linking)
+703-760   Step 5 - Multi-peak splitting
+763-890   Step 6 - Summarize
+893-920   run() - execute all steps
+923-970   save() and fixed-width writer
+973-1200  Plotting functions (PNG + HTML)
+1203-1280 Click-to-exclude interactive mode
+1283-1350 Guided mode
+1353-1430 Command-line interface
 ```
-
----
 
 ## Default parameters (DEFAULTS dictionary)
 
@@ -33,71 +37,61 @@ All tunable parameters live in one dictionary at the top. The key design princip
 
 | Parameter | Default | Source / Reasoning |
 |-----------|---------|-------------------|
-| Dedup radius | 1.0 x r_geo | Burns used ~1.0 mas; r_geo gives same scale for VERA |
-| Sidelobe zone | 0.5-3.0 x bmaj | First sidelobe at 1.0-1.5 x beam (Miyoshi+ 2024), second/third extend to ~3x |
+| Dedup radius | 1.0 × r_geo | Burns used ~1.0 mas; r_geo gives same scale for VERA |
+| Sidelobe zone | 0.5–3.0 × bmaj | First sidelobe at 1.0–1.5 × beam (Miyoshi+ 2024), second/third extend to ~3× |
 | Sidelobe flux | 1/N + 0.10 | Steinberg (1972) 1/N scaling + margin for post-CLEAN residuals |
 | Sidelobe beam tol | 50% | Empirical; sidelobe Gaussian fits are typically >50% distorted |
-| Link radius | 1.0 x r_geo | Same as dedup radius for consistency |
+| Link radius | 1.0 × r_geo | Same as dedup radius for consistency |
 | Max vel gap | 2.5 channels | Bridges 1 missing channel; 2+ missing = real break |
 | Min dip channels | 2 | Burns' MultiPeakCheck value; 1 would be too sensitive to noise |
-| N brightest | 3 | Burns' ThreeStrongest; balances precision vs. robustness |
-
----
+| N brightest | 3 | Burns' ThreeStrongest; balances precision vs robustness |
 
 ## BeamInfo class
 
-Holds four numbers: `bmaj`, `bmin`, `pa`, `chan_spacing`. The computed property `geo_mean = sqrt(bmaj x bmin)` gives the radius of a circle with the same area as the beam ellipse. This is the standard spatial search radius used throughout the pipeline (deduplication, feature linking).
+Holds four numbers: `bmaj`, `bmin`, `pa`, `chan_spacing`. The computed property `geo_mean = sqrt(bmaj × bmin)` gives the radius of a circle with the same area as the beam ellipse. This is the standard spatial search radius used throughout the pipeline (deduplication, feature linking).
 
-For VERA at 22 GHz: `sqrt(2.1 x 0.75) = 1.26 mas`.
-For VLBA at 22 GHz: `sqrt(1.4 x 0.3) = 0.65 mas`.
+For VERA at 22 GHz: `sqrt(2.1 × 0.75) = 1.26 mas`.
+For VLBA at 22 GHz: `sqrt(1.4 × 0.3) = 0.65 mas`.
 
----
-
-## Step 1 - Parse
+## Step 1 — Parse
 
 **Input format:** The parser auto-detects the number of columns and maps them to known MFIT output columns. It handles 3 to 16 columns, with graceful defaults for missing ones:
 
-- No flux column -> all fluxes set to 1.0 (uniform weights)
-- No error columns -> errors set to 0.0
-- No beam columns -> beam prompted or defaulted
+- No flux column → all fluxes set to 1.0 (uniform weights)
+- No error columns → errors set to 0.0
+- No beam columns → beam prompted or defaulted
 
 **Channel spacing detection:** Takes all unique velocity values, computes pairwise differences, histograms them, and picks the mode. This correctly handles gaps in the velocity coverage.
 
 **Beam auto-detection:** If >50% of rows have non-NaN beam columns, uses the median. Otherwise prompts or defaults. The median is robust to outlier fits (e.g., sidelobe spots with distorted beams).
 
----
-
-## Step 2 - Deduplicate
+## Step 2 — Deduplicate
 
 **Why duplicates exist:** The MFIT script (Imai 2004) divides images into overlapping subimage tiles (NOVER parameter). A spot near a tile boundary gets fitted in multiple tiles independently. These are the same emission, not independent detections.
 
 **How it works:** For each velocity channel, brightest-first search for partners within the merge radius. Flux-weighted average position, but **peak flux kept** (not mean). The brightest fit is the one where the spot was best centered in its tile.
 
----
+## Step 3 — Sidelobe flagging
 
-## Step 3 - Sidelobe flagging
-
-**Physics:** For N stations, peak sidelobe ~ 1/N (Steinberg 1972). For VERA (N=4), sidelobes reach 25-50% of the main lobe. After CLEANing, residuals are lower but can still be fitted by SAD. The first sidelobe appears at ~1.0-1.5 x beam FWHM from the main lobe.
+**Physics:** For N stations, peak sidelobe ~ 1/N (Steinberg 1972). For VERA (N=4), sidelobes reach 25–50% of the main lobe. After CLEANing, residuals are lower but can still be fitted by SAD. The first sidelobe appears at ~1.0–1.5 × beam FWHM from the main lobe.
 
 **Criteria (all must be met):**
 
-1. **Flux ratio**: spot flux < (1/N + 10%) x channel peak. For VERA: 35%. For VLBA: 20%.
-2. **Spatial zone**: spot is between 0.5 x bmaj and 3.0 x bmaj from the brightest spot in the same channel.
+1. **Flux ratio**: spot flux < (1/N + 10%) × channel peak. For VERA: 35%. For VLBA: 20%.
+2. **Spatial zone**: spot is between 0.5 × bmaj and 3.0 × bmaj from the brightest spot in the same channel.
 3. **Beam shape** (secondary): fitted beam deviates >50% from median (catches sidelobes even outside the spatial zone).
 
-**Important limitation:** Only checks against the *brightest* spot per channel. Conservative by design -- the real sidelobe filter is multi-epoch consistency in `masertrack_match.py`.
+**Important limitation:** Only checks against the *brightest* spot per channel. Conservative by design — the real sidelobe filter is multi-epoch consistency in `masertrack_match.py`.
 
-**Spots are flagged, not removed.** The `sidelobe` column in the spot table shows which spots were flagged and why. You can override by re-running with an exclude file.
+**Spots are flagged, not removed.** The `sidelobe` column in the spot table shows which spots were flagged and why. You can override by re-running with an `--include` file.
 
----
+## Step 4 — Feature grouping (chain-linking)
 
-## Step 4 - Feature grouping (chain-linking)
-
-This is the core algorithm, adapted from Burns' `Spots2Features` with two extensions: **bidirectional search** and **gap bridging**.
+This is the core algorithm, adapted from Burns' `Spots2Features.f90` with two extensions: **bidirectional search** and **gap bridging**.
 
 **Algorithm:**
 
-1. Sort all spots by flux (brightest first). Bright spots seed features.
+1. Sort all unflagged spots by flux (brightest first). Bright spots seed features.
 2. For each unassigned spot, start a new feature.
 3. Grow the chain in **both** velocity directions from the seed.
 4. Within each direction, search for the nearest (in velocity) unassigned spot that is within the spatial linking radius AND within the velocity gap limit.
@@ -108,17 +102,13 @@ This is the core algorithm, adapted from Burns' `Spots2Features` with two extens
 
 **Bidirectional improvement over Burns:** Burns' Fortran code sorted by file position and searched forward only. If the brightest spot is in the middle of a feature, his code misses the lower-velocity half. Our bidirectional search grows the chain from the seed in both directions.
 
----
+## Step 5 — Multi-peak splitting
 
-## Step 5 - Multi-peak splitting
+Burns' `MultiPeakCheck.f90` algorithm. Walks through each feature's flux profile and splits when a valley is found: at least `min_dip` consecutive drops followed by `min_dip` consecutive rises.
 
-Burns' `MultiPeakCheck` algorithm. Walks through each feature's flux profile and splits when a valley is found: at least `min_dip` consecutive drops followed by `min_dip` consecutive rises.
+Why `min_dip = 2`? A single-channel dip could be noise. Two consecutive drops span ~0.8 km/s, comparable to thermal maser linewidths — that is a real valley between physically distinct features.
 
-Why `min_dip = 2`? A single-channel dip could be noise. Two consecutive drops span ~0.8 km/s, comparable to thermal maser linewidths -- that is a real valley between physically distinct features.
-
----
-
-## Step 6 - Summarize
+## Step 6 — Summarize
 
 For each feature, computes summary properties from the N brightest spots (default N=3, or fewer if the feature has fewer spots).
 
@@ -130,8 +120,8 @@ For each feature, computes summary properties from the N brightest spots (defaul
 **Three error columns per axis:**
 
 - `x_err_formal`: flux-weighted average of MFIT fitting errors. Statistical only; underestimates true uncertainty.
-- `x_err_scatter`: standard deviation of ALL spot positions in the feature. Shows the spatial extent. For a 7-spot feature scattered over 0.15 mas, this is 0.15 mas.
-- `x_err_wmean`: weighted standard error of the mean position. This is the best estimate of the true positional uncertainty of the feature centroid. For the same 7-spot feature: ~0.06 mas. Computed as:
+- `x_err_scatter`: standard deviation of ALL spot positions in the feature. Shows the spatial extent.
+- `x_err_wmean`: weighted standard error of the mean position. Best estimate of the true positional uncertainty of the feature centroid. Only computed for ≥3 spots (too few points gives unreliable scatter estimates). Computed as:
 
 ```
 sigma = sqrt(sum(w_i^2 * (x_i - x_mean)^2) / (1 - sum(w_i^2)))
@@ -139,9 +129,7 @@ sigma = sqrt(sum(w_i^2 * (x_i - x_mean)^2) / (1 - sum(w_i^2)))
 
 where `w_i = I_i / sum(I)` are normalized flux weights.
 
-**Features with fewer than 3 spots** are not discarded. If a feature has 1 spot, all properties come from that single spot. If 2 spots, position is the flux-weighted average of both.
-
----
+**Features with fewer than 3 spots** are not discarded. Properties come from however many spots exist, with formal errors used when scatter-based errors are unreliable.
 
 ## Guided mode
 
@@ -151,8 +139,6 @@ The `--guided` flag wraps the pipeline in an interactive shell. After each step,
 
 1. First run: `python masertrack_identify.py --guided input.txt --n-stations 4`. Inspect the flagged spots and feature groupings.
 2. If any spots need manual overriding, create an exclude file and re-run: `python masertrack_identify.py --guided input.txt --exclude mylist.txt`.
-
----
 
 ## Exclude file format
 
@@ -166,8 +152,6 @@ One integer index per line. Lines starting with `#` are comments. Blank lines ar
 58
 ```
 
----
-
 ## Why both a feature catalog and a spot table?
 
 Burns et al. (2015, MNRAS 453, 3163) tested three approaches to parallax fitting for their VERA observations of S235AB-MIR:
@@ -178,9 +162,7 @@ Burns et al. (2015, MNRAS 453, 3163) tested three approaches to parallax fitting
 
 Their conclusion: when masers have variable components, flux-weighted feature positions give unreliable parallaxes because changing relative brightnesses shift the centroid. Individual channel positions are stable.
 
-**For `masertrack_match.py`:** Match features by position and velocity across epochs (using the feature catalog), then within each matched group, identify the specific channels that persist and feed those individual spot positions to `masertrack_fit.py`. This gives the best of both worlds -- feature grouping for identification, channel-level tracking for astrometry.
-
----
+**For `masertrack_match.py`:** Match features by position and velocity across epochs (using the feature catalog), then within each matched group, identify the specific channels that persist and feed those individual spot positions to `masertrack_fit.py`. This gives the best of both worlds — feature grouping for identification, channel-level tracking for astrometry.
 
 ## Input data: where the MFIT spot files come from
 
@@ -190,12 +172,181 @@ Imai also developed `mfident`, a simpler feature identification program with two
 
 ---
 
+# Part 2: masertrack_match.py
+
+## Concepts: spots, features, and groups
+
+- **Spot**: A single Gaussian fit to one emission peak in one velocity channel at one epoch. The raw output of AIPS SAD/MFIT.
+- **Feature**: A spatially and spectrally coherent group of spots — the same maser cloud across adjacent channels. Output of `masertrack_identify.py`. Exists within a single epoch.
+- **Group**: The same physical maser feature tracked across multiple epochs. Output of `masertrack_match.py`. This is what gets parallax-fitted.
+
+The naming follows the hierarchy from the literature: spots → features (Sanna et al. 2010), with "group" as the cross-epoch container.
+
+## Normal vs inverse phase referencing
+
+VERA's dual-beam system observes the maser (A-beam) and a reference quasar (B-beam) simultaneously.
+
+**Normal PR**: Quasar fringes provide phase/rate solutions → applied to maser data → maser positions are in the ICRF frame, relative to the phase tracking center. No alignment needed between epochs (the quasar provides an absolute reference).
+
+**Inverse PR**: Maser's brightest channel provides phase/rate solutions → applied to quasar data → quasar position is measured relative to the maser. Maser spots are self-calibrated with positions relative to the reference channel at (0,0). Used when the quasar is too faint for direct fringe detection (Imai et al. 2012).
+
+The code processes both modes independently and compares results when both are available.
+
+## Default parameters
+
+| Parameter | Default | Reasoning |
+|-----------|---------|-----------|
+| Match radius | 3.0 × r_geo | Generous to allow for proper motion + position uncertainty. At 5 mas/yr and 1 yr between epochs, a maser can move ~5 mas. 3 × 1.26 = 3.78 mas base radius, plus `max_pm × dt` expands it for distant epochs. |
+| Vel tolerance | 4 channels | 4 × 0.425 = 1.7 km/s. H₂O masers commonly show velocity drift of 1–3 km/s/yr as relative spot brightness shifts between channels, or from real acceleration. Combined with velocity interpolation, this catches drifts up to ~3 km/s/yr over a 1-year baseline. |
+| Max PM | 5.0 mas/yr | Upper limit for Galactic maser proper motions. Solar motion + Galactic rotation contribute ~2–4 mas/yr; internal motions add 1–5 mas/yr for H₂O. |
+| Min epochs | 3 | Minimum for π fitting: 5 parameters (π, μ_α cos δ, μ_δ, x₀, y₀) from ≥6 measurements (2 coordinates × ≥3 epochs). |
+| Outlier sigma | 3.0 | MAD-based 3σ threshold for trajectory outlier flagging. MAD × 1.4826 gives a robust σ estimate. |
+
+## Step 1 — Parse
+
+Reads the epoch table and discovers feature/spot files by matching `{epoch}_{mode}_features.txt` in the input directory. Auto-detects beam from the first file's header. Flags outlier epochs by fitting linear trends to quasar shifts and identifying 3σ deviants (catches systematic offsets from degraded observations).
+
+If `--corrections` is provided, epoch-level overrides are applied here (e.g., `use_for_pi=0`).
+
+## Step 2 — Align
+
+Three alignment layers for inverse PR data, applied in sequence:
+
+### 2a. Quasar-based shifts
+
+The measured quasar position in inverse PR encodes the maser's absolute motion:
+
+    Q_measured(i) = Q_true - M_maser(i)
+
+The maser's motion relative to epoch 0:
+
+    M(i) - M(0) = -(Q(i) - Q(0))
+
+The shift to apply at each epoch is `-(Q(i) - Q(0))`, computed from JMFIT positions in the epoch table. The RA conversion uses `shift_ra = -(dQ_seconds × 15 × cos(dec) × 1000)` mas. The Dec sign at negative declinations requires a positive sign: `shift_dec = +(dQ_seconds × 1000)` mas, because increasing Dec seconds correspond to more negative Dec values at southern declinations.
+
+### 2b. Reference spot correction
+
+The brightest maser channel used for FRING can change between epochs. VERA lacks Doppler tracking — the LO is manually tuned, so the peak channel in the correlator output can shift. If epoch 0 used channel 417 (−147.1 km/s) but epoch 5 uses channel 420 (−148.3 km/s), the (0,0) origin shifts to a different physical position.
+
+`compute_ref_corrections()` finds epoch 0's reference velocity in each subsequent epoch's spot file. The position of that velocity's spot relative to (0,0) is the correction. Corrections are typically 0.01–0.28 mas and accumulate as the reference velocity drifts.
+
+### 2c. Normal PR anchor
+
+When both PR modes are available, inverse data is shifted into the normal PR coordinate frame. The reference maser at (0,0) in inverse has a known position in normal PR (measured from the phase tracking center). Adding this offset puts both modes in the same frame.
+
+Without normal PR, inverse positions are self-consistent for parallax (only relative epoch-to-epoch positions matter). The absolute origin is arbitrary.
+
+### Cross-check
+
+When both modes are available, features at the same velocity are matched between aligned inverse and normal data. The median and RMS of position differences verify alignment quality. With the normal PR anchor, residuals should be sub-mas.
+
+## Step 3 — Match
+
+### 3a. Growing-chain with velocity drift tracking
+
+The core matching algorithm in `SingleModeMatch.match()`:
+
+1. **Seed selection**: The epoch with the most features seeds matching — more features means more candidates. Starting from the brightest unmatched feature gives reliable anchor positions.
+
+2. **Nearest-in-time ordering**: Other epochs are searched nearest-first in time. This minimizes extrapolation distance — the first matches are most reliable because position and velocity haven't had time to change much.
+
+3. **Position interpolation**: With ≥2 matched epochs, the expected position at the next epoch is linearly interpolated (or extrapolated beyond the current range). This implicitly tracks proper motion — the search center follows the feature's trajectory.
+
+4. **Velocity drift tracking**: The expected velocity is interpolated identically to position. H₂O masers commonly show velocity drifts of 1–3 km/s/yr as the relative brightness of spots within a feature shifts between channels. Without interpolation, a feature drifting 1.7 km/s over a year (like the −148 km/s reference maser in our test data) would be lost. With it, the search velocity tracks the drift.
+
+5. **Match acceptance**: A candidate must satisfy both:
+   - Spatial: within `match_radius × beam_geo + max_pm × |dt|` of interpolated position
+   - Velocity: within `vel_tolerance × chan_spacing` of interpolated velocity
+   - Nearest spatial match wins (greedy)
+
+6. **Uniqueness**: Each feature belongs to one group. Brightest features seed first.
+
+### 3b. Trajectory smoothness check
+
+`_check_trajectories()` fits linear proper motion (RA and Dec independently) to each group with ≥4 epochs. Epochs with position residuals >3σ (MAD-based) are flagged. This catches:
+
+- **Mismatches**: different physical feature accidentally grabbed at one epoch
+- **Systematic offsets**: degraded observations (e.g., 3-station VERA epoch r14307a: +1.6 mas RA, +2.9 mas Dec residual)
+
+Flagged epochs get `use_for_pi=0` in output — kept in the group but excluded from parallax fitting.
+
+### 3c. Velocity drift computation
+
+`_compute_vel_drift()` fits linear V_LSR vs time for each group with ≥3 epochs. The slope (km/s/yr) measures either real acceleration of maser cloudlets or apparent drift as peak brightness shifts between channels. Both are scientifically interesting. Reported in group catalog and plots.
+
+### 3d. Grading
+
+`grade_group()` uses the number of unflagged epochs where the group appears divided by total unflagged epochs. Flagged epochs are excluded from the denominator — a group in all 8 good epochs out of 9 total gets Grade A.
+
+### 3e. Corrections application
+
+`apply_corrections()` processes the corrections file after matching: removes specified epochs from groups, recalculates statistics and grades. The template is auto-generated listing all groups with trajectory flags as pre-populated suggestions.
+
+## Step 4 — Save
+
+### Error floor
+
+Spot position errors from SAD/MFIT can be zero due to output precision truncation (4 decimal places in mas = 0.1 μas precision, while real errors are ~1–10 μas). The code applies a floor following Reid et al. (1988):
+
+    error_floor = max(beam_geo / (2 × SNR), 0.001 mas)
+
+For VERA with beam_geo = 1.28 mas and SNR = 100: floor = 6.4 μas. For brightest spots (SNR ~400): floor = 1.6 μas. Feature errors use the wmean from `masertrack_identify.py` with the same floor.
+
+### Tracked spots vs tracked features
+
+**Spots** (`*_spots_tracked.txt`): One row per velocity channel × epoch within each group. Raw positions with floored errors. Primary parallax fitting input — track the same `vlsr` across epochs.
+
+**Features** (`*_features_tracked.txt`): One row per feature × epoch. Flux-weighted centroid positions with wmean errors. Alternative for feature-level fitting, but Burns et al. (2015) showed this fails for variable masers.
+
+### ID mapping
+
+`*_id_mapping.txt` connects cross-epoch `group_id` to per-epoch `feature_id`. Allows tracing: "Group G21 in epoch r14248a was feature_id 15" — look up that feature in the identify output for full details.
+
+### Corrections template
+
+Auto-generated with all groups listed. Trajectory-flagged epochs as commented-out `EXCLUDE` suggestions. User uncomments desired corrections and re-runs with `--corrections`.
+
+## Plots
+
+### Diagnostic (per mode, 3×2 grid)
+
+| Panel | Content |
+|-------|---------|
+| (0,0) | Sky map — rainbow by V_LSR, marker shape by epoch |
+| (0,1) | V_LSR vs time — shows velocity drift |
+| (1,0) | RA vs time for A/B groups — proper motion visible |
+| (1,1) | Dec vs time for A/B groups |
+| (2,0) | RA residuals from linear fit — **outliers visible here** |
+| (2,1) | Dec residuals — red rings on flagged epochs |
+
+The residual panels are the most important for quality control. They subtract the linear proper motion, so what remains should be scatter around zero (plus the parallax sinusoid, which is small). Points far from zero indicate mismatches or systematic errors.
+
+### Dashboard (per mode, 2×2 grid)
+
+Grade distribution (bar chart with counts), statistics text (groups, tracked spots, parameters), velocity coverage (how many epochs per group — shows which velocity ranges are well-sampled), velocity drift distribution (which groups are accelerating).
+
+### Comparison (2×2, when both modes available)
+
+Side-by-side sky maps with same axis limits. Labels show V_LSR of groups common to both modes (matched by velocity within 2 channels and position within 5× beam). Grade histogram comparing both modes. Statistics text box with counts of common, normal-only, and inverse-only groups.
+
+### Interactive HTML (3×2, plotly)
+
+Rows 1–2: Feature-level sky map, velocity tracking, RA/Dec vs time. Row 3: Spot-level sky map and velocity, showing individual spots within each group colored by epoch and sized by flux. Marker opacity encodes time (faint = early epoch, solid = late). Legend toggles linked across all panels.
+
+---
+
 ## Credits and references
 
-- Burns, R. A. et al. (2015). "A 'water spout' maser jet in S235AB-MIR." MNRAS 453, 3163. -- Feature vs spot parallax fitting; chain-linking algorithm.
-- Imai, H. (2004). "AIPS automatic pipelines for JVN/VERA." -- MFIT pipeline; csad converter; mfident.
-- Middelberg, E. & Bach, U. (2008). "High Resolution Radio Astronomy Using Very Long Baseline Interferometry." -- VLBI imaging review; sidelobe levels.
-- Reid, M. J. et al. (2009a). "Trigonometric Parallaxes of Massive Star-Forming Regions. I." ApJ 693, 397. -- BeSSeL parallax methodology.
-- Reid, M. J. & Honma, M. (2014). "Micro-Arcsecond Radio Astrometry." ARA&A 52, 339. -- Review of VLBI maser astrometry.
-- Steinberg, J. L. (1972). "Random Array Beamforming." -- 1/N sidelobe scaling law.
-- Thompson, A. R., Moran, J. M., & Swenson, G. W. (2017). "Interferometry and Synthesis in Radio Astronomy." -- Synthesized beam theory.
+- Burns, R. A. et al. (2015). MNRAS 453, 3163 — chain-linking, feature vs spot π fitting
+- Imai, H. (2004). AIPS pipelines for JVN/VERA — MFIT, csad, mfident
+- Imai, H. et al. (2012). PASJ 64, 142 — inverse phase referencing
+- Hirota, T. et al. (2020). PASJ 72, 50 — First VERA Astrometry Catalog
+- Middelberg, E. & Bach, U. (2008) — VLBI imaging, sidelobe levels
+- Miyoshi, M. et al. (2024) — EHT PSF sidelobe analysis
+- Reid, M. J. et al. (1988) — thermal positional uncertainty θ/(2×SNR)
+- Reid, M. J. et al. (2009). ApJ 693, 397 — BeSSeL π methodology
+- Reid, M. J. et al. (2014). ApJ 783, 130 — outlier-tolerant fitting, √N correction
+- Sanna, A. et al. (2010). A&A 517, A78 — feature definition, error-weighted positions
+- Sato, M. et al. (2010). ApJ 720, 1055 — optimal epoch scheduling
+- Steinberg, J. L. (1972) — 1/N sidelobe scaling
+- Thompson, Moran & Swenson (2017) — synthesized beam theory
