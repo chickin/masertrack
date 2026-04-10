@@ -6,7 +6,7 @@
 |--------|---------|-------------|-------|--------|
 | `masertrack_identify.py` | 1.0.0 | Spots → Features (per epoch) | MFIT/SAD spot table | Feature catalog + spot table |
 | `masertrack_match.py` | 1.0.0 | Features → Groups (cross-epoch) | Feature catalogs + epoch table | Matched groups + tracked positions |
-| `masertrack_fit.py` | — | Groups → Astrometry (planned) | Tracked positions | Parallax + proper motion |
+| `masertrack_fit.py` | 1.0.0 | Groups → Astrometry | Tracked positions | Parallax + proper motion |
 
 [BSD-3-Clause](LICENSE) | [Cite](CITATION.cff)
 
@@ -20,6 +20,7 @@ It works with any VLBI array: VERA, VLBA, LBA, EVN, KaVA, EAVN, or any other int
 
 - Python 3.8 or later
 - numpy
+- scipy
 - pandas
 
 ### Optional (recommended)
@@ -446,6 +447,195 @@ Click legend to toggle groups. "Show all"/"Hide all" buttons. Hover for epoch, p
 See `CODE_BREAKDOWN.md` for a detailed explanation of the matching algorithm, alignment procedure, trajectory checking, and how each parameter choice relates to the physics of maser astrometry.
 
 ---
+
+---
+
+# masertrack_fit.py
+
+## Quick start
+
+    python masertrack_fit.py match_inverse_spots_tracked.txt \
+      --ra 18:14:26.743 --dec -25:02:54.750
+
+Both PR modes (compared side by side):
+
+    python masertrack_fit.py match_inverse_spots_tracked.txt \
+      --ra 18:14:26.743 --dec -25:02:54.750 \
+      --features match_inverse_features_tracked.txt \
+      --spots-normal match_normal_spots_tracked.txt \
+      --features-normal match_normal_features_tracked.txt \
+      --outdir results/
+
+Validate against published data:
+
+    python masertrack_fit.py --validate
+
+## What does masertrack_fit.py do?
+
+Takes the tracked spot tables from `masertrack_match.py` and fits trigonometric parallax (π) and proper motion (μ) to each velocity channel and group. The pipeline implements the standard BeSSeL/VERA fitting methodology (Reid et al. 2009, ApJ 693, 397; Burns et al. 2015, MNRAS 453, 3163).
+
+### How parallax fitting works
+
+Astrometric positions of masers are a combination of a linear proper motion and a sinusoidal parallax component:
+
+    Δα·cos(δ) = π × F_α(t)  +  μ_α × Δt  +  α₀
+    Δδ         = π × F_δ(t)  +  μ_δ × Δt  +  δ₀
+
+where F_α and F_δ are the parallax factors (projections of the Earth-Sun vector onto the source direction), computed from the JPL DE440 ephemeris or an analytical approximation. The fitting solves for the 5 parameters [π, μ_α, α₀, μ_δ, δ₀] per channel via weighted least squares (WLS).
+
+### Three fitting modes (Burns et al. 2015, MNRAS 453, 3163)
+
+Burns et al. tested three approaches on S235AB-MIR water maser measurements with VERA (Burns et al. 2015, MNRAS 453, 3163):
+
+1. **Individual fitting**: fit π + μ per channel independently. Simplest diagnostic — all channels in a group should give consistent π.
+2. **Group fitting**: fit common π across all channels in a group, independent μ per channel. Most reliable — uses all data while accounting for internal motions. This is the primary result.
+3. **Feature fitting**: fit using flux-weighted feature centroids. Less reliable for variable masers because changing relative brightnesses shift the centroid. Reported for comparison.
+
+Their conclusion: group fitting is most robust. Feature fitting failed for features with complex velocity structure or burst behavior. This code implements all three and reports the group fit as the primary parallax.
+
+### Pipeline overview
+
+    Tracked spots from masertrack_match.py
+         |
+    Step 1: Individual channel fitting (per-channel π + μ)
+         |
+    Step 2: Group fitting (common π, independent μ per channel) — PRIMARY
+         |
+    Step 3: Bootstrap (10,000 epoch resamples for robust uncertainties)
+         |
+    Step 4: Acceleration BIC test
+         |
+    Step 5: Feature fitting (flux-weighted centroids, for comparison)
+         |
+    Step 5b: Cauchy outlier-tolerant fitting
+         |
+    Step 6: Distance estimation (1/π with optional Bayesian prior)
+         |
+    Step 7: Combined multi-group fits (shared π across grade sets)
+         |
+    Step 8: Epoch outlier detection
+         |
+    Step 9: Chauvenet parallax outlier group detection
+         |
+    Final parallax: weighted mean of non-outlier groups (bootstrap σ)
+
+### Error handling chain
+
+1. **Formal MFIT errors** (σ_x, σ_y per data point)
+2. **Error floors** ε added in quadrature until χ²_red = 1 (Reid et al. 2009)
+3. **√N correction** — σ_π × √(N_channels) accounts for correlated systematics (Reid et al. 2014, ApJ 783, 130)
+4. **Bootstrap** — replaces formal σ with empirical 16th/84th percentile from 10,000 epoch resamples
+
+### Distance estimation
+
+By default, distance is computed as D = 1/π with asymmetric error propagation (the community standard for VLBI maser parallaxes — Reid et al. 2019, ApJ 885, 131). No Bayesian prior is applied unless explicitly requested.
+
+Optional priors for sanity checking:
+
+| Prior | Formula | Use case |
+|-------|---------|----------|
+| `none` (default) | D = 1/π | VLBI standard, σ_π/π < 0.2 |
+| `exponential` | P(D) ∝ D² exp(−D/L) | Population-agnostic (Bailer-Jones 2015) |
+| `disk` | P(D) ∝ D² exp(−R/h_R) exp(−|z|/h_z) | Population-specific Galactic model |
+
+Example `--disk-scale` values for different maser populations:
+
+| Population | h_R (kpc) | h_z (kpc) | References |
+|------------|-----------|-----------|------------|
+| HMSFR masers | 2.4 | 0.025 | Reid+2019 |
+| AGB O-rich masers | 2.5 | 0.250 | Jackson+2002, Andriantsaralaza+2022 |
+| Post-AGB / old thin disk | 2.6 | 0.300 | — |
+| Thick disk (evolved) | 2.6 | 0.900 | Bland-Hawthorn & Gerhard 2016 |
+
+## Input
+
+The primary input is the tracked spots file from `masertrack_match.py`. An input template (`masertrack_fit_input_template.txt`) documents the column format for manual data entry from other sources.
+
+**Minimum required columns:** group_id, epoch, mjd, x (Δα·cosδ in mas), y (Δδ in mas), x_err, y_err
+
+**Optional columns:** grade, vlsr, flux, use_for_pi, dec_year
+
+## Output
+
+### Diagnostic plots (PNG)
+
+| Plot | Content |
+|------|---------|
+| `G{id}_parallax.png` | 3×3 per group: PM + parallax sinusoids + residuals, with AU scale |
+| `G{id}_feature_parallax.png` | Same layout for feature-level fits |
+| `final_parallax_overview.png` | Matrix: one row per group + combined, columns = parallax curve / bootstrap / distance |
+| `final_proper_motions.png` | PM vectors with VLSR colors, AU axes, scale bars (Orosz+2017 style) |
+| `pi_vs_vlsr.png` | Per-channel parallax vs velocity |
+| `summary.png` | Group parallaxes, bootstrap histogram, distance |
+| `parallax_sky.png` | Parallax ellipses on sky |
+| `proper_motions.png` | All PM vectors |
+| `residuals.png` | Post-fit RA/Dec residuals |
+
+### Interactive HTML
+
+| File | Content |
+|------|---------|
+| `spots_interactive.html` | Per-channel 3×3 grid with individual channel toggling |
+| `features_interactive.html` | Feature-level with group toggling |
+
+### Text results
+
+| File | Content |
+|------|---------|
+| `fit_final_parallax.txt` | Combined best parallax per mode with flags |
+| `fit_{mode}_results.txt` | Per-group parallax, proper motion, error floors |
+| `fit_{mode}_individual.txt` | Per-channel individual fits |
+| `fit_{mode}_crosscheck.txt` | Group vs feature vs bootstrap comparison |
+
+### Publication data
+
+| Directory | Content |
+|-----------|---------|
+| `publication/` | Per-group CSV with data, model, residuals + fine-grid model curves |
+| `export/` | pmpar, BeSSeL, VERA, KaDai format files for cross-validation |
+
+## Command-line options
+
+    spots_file              Tracked spots file (required)
+    --ra RA                 Source RA in hh:mm:ss.sss (required)
+    --dec DEC               Source Dec in ±dd:mm:ss.sss (required)
+    --features FILE         Tracked features file (for feature fitting)
+    --spots-normal FILE     Normal PR spots (runs both modes)
+    --features-normal FILE  Normal PR features
+    --bootstrap-trials N    Bootstrap trials (default: 10000; 0 to skip)
+    --ephemeris {auto,de440,analytical}  Parallax factor method
+    --distance-prior {none,disk,exponential}  Distance prior (default: none)
+    --disk-scale h_R h_z    Disk prior scale lengths in kpc
+    --export-formats LIST   Comma-separated: pmpar,bessel,vera,kadai
+    --pub-fit SELECTION     Select specific fit for publication export
+    --quick                 Skip bootstrap
+    --no-plots              Disable plots
+    --validate              Run validation suite and exit
+
+## Validation
+
+The `--validate` flag runs a built-in regression test against Reid et al. (2009, ApJ 705, 1548) Table 3:
+
+| Source | Published π (mas) | Our π (mas) | Δ/σ |
+|--------|-------------------|-------------|-----|
+| Sgr B2M (H₂O, VLBA) | 0.130 ± 0.012 | 0.130 ± 0.012 | 0.0σ |
+| Sgr B2N (H₂O, VLBA) | 0.128 ± 0.015 | 0.127 ± 0.015 | 0.1σ |
+
+Additionally validated externally against Krishnan+2015 G339.884 (LBA, 6.7 GHz CH₃OH): published 0.480 ± 0.080, our 0.493 ± 0.084 (0.1σ).
+
+## References
+
+- Reid et al. 2009, ApJ 693, 397 — BeSSeL fitting methodology, error floors
+- Reid et al. 2009, ApJ 705, 1548 — Sgr B2 parallax (validation data)
+- Reid et al. 2014, ApJ 783, 130 — √N correction, outlier tolerance
+- Reid et al. 2019, ApJ 885, 131 — Galactic model, 1/π distance standard
+- Burns et al. 2015, MNRAS 453, 3163 — Individual/group/feature fitting comparison (S235AB-MIR)
+- Burns et al. 2017, MNRAS 467, L36 — AFGL 5142, feature fitting limitations
+- Imai et al. 2013, PASJ 65, 28 — Iterative parallax fitting
+- Orosz et al. 2017, MNRAS 468, L63 — IRAS 18113-2503 proper motions
+- Bailer-Jones 2015, PASP 127, 994 — Exponential distance prior
+- Andriantsaralaza et al. 2022, A&A 667, A74 — AGB distance priors
+- Bland-Hawthorn & Gerhard 2016, ARA&A 54, 529 — Galactic disk model
 
 ## Credits
 

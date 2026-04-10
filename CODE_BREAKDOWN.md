@@ -350,3 +350,97 @@ Rows 1–2: Feature-level sky map, velocity tracking, RA/Dec vs time. Row 3: Spo
 - Sato, M. et al. (2010). ApJ 720, 1055 — optimal epoch scheduling
 - Steinberg, J. L. (1972) — 1/N sidelobe scaling
 - Thompson, Moran & Swenson (2017) — synthesized beam theory
+
+---
+
+# Part 3: masertrack_fit.py
+
+## File structure
+
+```
+Lines      Section
+------     -------
+1-48       Module docstring (credits, version, references, changelog)
+50-120     Imports, constants, and default parameters
+122-220    Input parsing (tracked files, coordinates)
+222-340    Parallax factors (DE440 ephemeris + analytical fallback)
+342-515    Core fitting engine (FitResult, design matrices, WLS solver)
+517-635    Error floor finding (per-coordinate bisection to χ²_red = 1)
+637-705    Cauchy outlier-tolerant fitting
+707-750    Bootstrap resampling (epoch-level)
+752-890    Distance estimation (1/π default, optional priors)
+892-985    Channel data extraction (spots → per-VLSR channel arrays)
+988-1290   Fitting functions (individual, group, combined)
+1295-1460  Iterative fitting (Imai+2013, kept as diagnostic)
+1463-1625  Outlier detection (epoch-level + Chauvenet group-level)
+1627-2160  ParallaxFitter class (orchestrates 9-step pipeline)
+2160-2400  Output writers (results table, 4 export formats)
+2400-2610  Interactive HTML — spot-level (3×3 + pi vs VLSR + PM)
+2610-2770  Interactive HTML — feature-level
+2770-2920  Proper motion plot (AU axes, Orosz-style scale bars)
+2920-3100  Parallax overview matrix (per-group + combined bootstrap)
+3100-3240  Per-group 3×3 parallax fit plot
+3240-3440  Feature-level 3×3 plot
+3440-3600  Summary and diagnostic plots
+3600-3750  Publication data + final parallax export
+3750-3900  Validation (Reid+2009 Sgr B2 regression test)
+3900-4450  CLI, main, self-test
+```
+
+## Parallax factors
+
+The parallax of a source at (α, δ) produces an apparent position shift proportional to the Earth–Sun vector projected onto the sky. The code provides two methods:
+
+1. **DE440 ephemeris** (preferred): Uses `astropy.coordinates.get_body_barycentric` for the Earth's barycentric position (X, Y, Z) in ICRS equatorial AU.
+2. **Analytical** (fallback): Computes solar ecliptic longitude from the mean anomaly (Astronomical Almanac), Earth–Sun distance from eccentricity, converts to equatorial via obliquity.
+
+**Critical convention:** The input data is in Δα·cos(δ) (not raw Δα), so F_α does NOT include a 1/cos(δ) factor. This matches the BeSSeL/pmpar standard (Reid+2009).
+
+## Design matrices
+
+For a single channel with N epochs: 5 parameters [π, μ_x, x₀, μ_y, y₀], 2N data points (interleaved RA, Dec). For a group with K channels: 1 + 4K parameters (shared π, independent μ and offset per channel). This is the Burns+2015 "group fitting" approach.
+
+## Error floors (Reid+2009)
+
+Systematic astrometric errors exceed formal MFIT uncertainties. The code finds ε_RA and ε_Dec via bisection (scipy.optimize.brentq) such that σ_total² = σ_formal² + ε² gives χ²_red = 1.0 in each coordinate independently. If formal errors already give χ²_red < 1, no floor is needed (ε = 0).
+
+## Bootstrap
+
+Epoch resampling with replacement: for each trial, resample the epoch indices and refit. All channels at a given epoch move together (preserving correlated systematics). The 16th/84th percentiles give the 68% CI. Samples cached to `.npz` for instant reload.
+
+## Chauvenet outlier detection
+
+Statistical replacement for hard-coded velocity exclusions. Computes a robust reference parallax from the weighted mean of all groups, then flags groups where P(|z| > |z_obs|) < 1/(2N). Correctly identifies the −62 km/s group in IRAS 18113 as an outlier without manual intervention.
+
+## Distance estimation
+
+Default is D = 1/π with asymmetric errors — the community standard for VLBI masers (Reid+2019). Optional Galactic disk or exponential priors available for sanity checking. The parallax overview plot shows the 1/π likelihood PDF alongside prior-dependent posteriors in different colors for transparent comparison.
+
+## Feature fitting
+
+Implemented following Burns et al. (2015, MNRAS 453, 3163) and Burns et al. (2017, MNRAS 467, L36, AFGL 5142). Uses flux-weighted feature centroids from `masertrack_match.py`. Feature fits are reported alongside channel-level group fits for comparison, but are never used as the primary result — Burns showed that variable masers give unreliable feature-level parallaxes because changing component brightnesses shift the centroid. The code generates separate 3×3 diagnostic plots for feature fits so the user can visually compare.
+
+## Plots
+
+| Function | Output | Description |
+|----------|--------|-------------|
+| `plot_parallax_fit` | 3×3 PNG per group | Sky + RA/Dec vs time + parallax ellipse + sinusoids + residuals |
+| `plot_feature_fit` | 3×3 PNG per group | Same for feature centroids |
+| `plot_final_parallax_overview` | Matrix PNG | Per-group rows: parallax curve, bootstrap histogram, distance PDF |
+| `plot_final_proper_motions` | Single PNG | PM vectors with VLSR colors, AU axes, Orosz+2017 scale bars |
+| `plot_spots_html` | Interactive HTML | Per-channel toggling with different symbols |
+| `plot_features_html` | Interactive HTML | Feature-level with group toggling |
+
+## Credits and references
+
+- Burns, R. A. et al. (2015). MNRAS 453, 3163 — individual/group/feature fitting (S235AB-MIR)
+- Burns, R. A. et al. (2017). MNRAS 467, L36 — AFGL 5142, feature fitting limitations
+- Reid, M. J. et al. (2009). ApJ 693, 397 — BeSSeL fitting, error floors
+- Reid, M. J. et al. (2009). ApJ 705, 1548 — Sgr B2 parallax (validation data)
+- Reid, M. J. et al. (2014). ApJ 783, 130 — √N correction, outlier tolerance
+- Reid, M. J. et al. (2019). ApJ 885, 131 — Galactic model, distance estimation
+- Imai, H. et al. (2013). PASJ 65, 28 — Iterative parallax fitting
+- Orosz, G. et al. (2017). MNRAS 468, L63 — IRAS 18113-2503 proper motions
+- Bailer-Jones, C. A. L. (2015). PASP 127, 994 — Exponential distance prior
+- Andriantsaralaza, M. et al. (2022). A&A 667, A74 — AGB distance priors
+- Bland-Hawthorn, J. & Gerhard, O. (2016). ARA&A 54, 529 — Galactic disk model

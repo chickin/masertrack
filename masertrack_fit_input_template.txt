@@ -1,0 +1,51 @@
+# =================================================================
+# masertrack_fit.py — Input file template
+# =================================================================
+#
+# This file shows the expected input format for masertrack_fit.py.
+# It is compatible with the output of masertrack_match.py, but you
+# can also create this file manually from any VLBI astrometric data.
+#
+# MINIMUM REQUIRED COLUMNS (for parallax fitting):
+#   group_id  — integer identifying which velocity group this spot belongs to
+#   epoch     — epoch label (string, e.g. "e01", "2014A")
+#   mjd       — Modified Julian Date of observation
+#   x         — RA offset in mas (MUST be delta_alpha * cos(delta))
+#   y         — Dec offset in mas
+#   x_err     — RA error in mas
+#   y_err     — Dec error in mas
+#
+# OPTIONAL COLUMNS:
+#   grade      — quality grade: A (best), B, C (default: A)
+#   dec_year   — decimal year (computed from MJD if missing)
+#   n_stations — number of array stations (informational)
+#   flag       — any text flag (informational)
+#   use_for_pi — 1 = use for parallax, 0 = exclude (default: 1)
+#   vlsr       — LSR velocity in km/s (used for labeling and diagnostics)
+#   flux       — peak flux density in Jy (used for weighting in feature fits)
+#
+# IMPORTANT CONVENTIONS:
+#   - x MUST be delta_alpha * cos(delta), NOT raw delta_alpha
+#   - Positions are RELATIVE offsets (e.g. maser minus quasar)
+#   - Errors are 1-sigma formal fitting uncertainties
+#   - group_id groups channels that share a common parallax
+#     (typically: channels within one maser feature, tracked across epochs)
+#
+# NOTES:
+#   - Lines starting with # are comments
+#   - The header line starting with # and containing column names is required
+#   - Column order must match the header
+#   - Whitespace-separated (any number of spaces/tabs)
+#   - The 'flag' column can be empty (just leave blank space)
+#
+# EXAMPLE: Two groups, 4 epochs each, from a VLBA maser observation
+#
+#  group_id grade   epoch      mjd     dec_year n_stations         flag use_for_pi         vlsr            x            y        x_err        y_err         flux
+          1     A     e01  56751.0    2014.2546          4                       1     -35.6000       4.1770       2.9980       0.0560       0.0980     413.0000
+          1     A     e02  56820.0    2014.4435          4                       1     -35.6000       2.6670       1.0850       0.0260       0.0230     418.0000
+          1     A     e03  56905.0    2014.6762          5                       1     -35.6000       1.6540       0.4640       0.0030       0.0020     427.0000
+          1     A     e04  56933.0    2014.7529          4                       1     -35.6000       1.0310       0.2080       0.0210       0.0170     462.0000
+          2     B     e01  56751.0    2014.2546          4                       1     -38.8000      10.2300      -5.1200       0.0800       0.1200      52.0000
+          2     B     e02  56820.0    2014.4435          4                       1     -38.8000       9.1500      -5.8700       0.0600       0.0900      48.0000
+          2     B     e03  56905.0    2014.6762          5                       1     -38.8000       7.8200      -6.4300       0.0400       0.0600      55.0000
+          2     B     e04  56933.0    2014.7529          4                       1     -38.8000       7.3100      -6.7100       0.0500       0.0800      43.0000
