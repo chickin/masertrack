@@ -1,0 +1,49 @@
+# ================================================================
+# masertrack_match — Corrections File (auto-generated template)
+# ================================================================
+#
+# HOW TO USE:
+#   1. Review the group list below and the diagnostic plots
+#   2. Uncomment lines to activate corrections (remove the leading #)
+#   3. Re-run: python masertrack_match.py epoch_table.txt --corrections <this_file>
+#   4. Check output, repeat if needed
+#
+# SYNTAX:
+#   EPOCH  <epoch_code>  use_for_pi=0    Exclude epoch from parallax fitting
+#   GROUP  G<id>  <epoch_code>  EXCLUDE   Remove one epoch from a group
+#
+# NOTES:
+#   - Lines starting with # are comments (inactive)
+#   - Uncommented lines starting with EPOCH or GROUP are active
+#   - Group IDs (G1, G2...) refer to the group_id in the groups output
+#   - 'T' in the pattern column of console output = trajectory flagged
+#   - Suggested exclusions are pre-populated below (commented out)
+#   - pi = parallax, use_for_pi = include in parallax fitting (1=yes, 0=no)
+#
+# ================================================================
+
+# === EPOCH-LEVEL FLAGS ===
+# Exclude entire epochs from parallax fitting.
+# The epoch is still used for matching, but use_for_pi=0 in output.
+
+# EPOCH  e01  use_for_pi=1
+# EPOCH  e02  use_for_pi=1
+# EPOCH  e03  use_for_pi=1
+# EPOCH  e04  use_for_pi=1
+# EPOCH  e05  use_for_pi=1
+# EPOCH  e06  use_for_pi=1
+#
+# === GROUP CORRECTIONS ===
+# Exclude a specific epoch from a group:
+#   GROUP  G<id>  <epoch_code>  EXCLUDE
+#
+# --- NORMAL PR ---
+# G  2 V=   -42.2 Nep=6 A 123456
+# G  3 V=   -35.0 Nep=6 A 123456
+# G  4 V=   -28.0 Nep=6 A 123456
+# G  1 V=   -50.0 Nep=4 B 12*45*
+# --- INVERSE PR ---
+# G  2 V=   -42.2 Nep=6 A 123456
+# G  3 V=   -35.0 Nep=6 A 123456
+# G  4 V=   -28.0 Nep=6 A 123456
+# G  1 V=   -50.0 Nep=4 B 12*45*

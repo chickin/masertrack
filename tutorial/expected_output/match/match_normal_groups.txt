@@ -1,0 +1,7 @@
+# Matched groups (normal PR)
+# masertrack_match v1.1
+#  group_id    vlsr_peak n_epochs n_channels grade       x_mean       y_mean   scatter_ra  scatter_dec    vel_drift    vel_range pattern
+          1     -50.0000        4          3     B      -3.9558      -5.1202       0.5304       0.3539      -0.0000       0.0000  12*45*
+          2     -42.2100        6          4     A      -8.1088       5.9986       0.6780       0.2520      -0.0000       0.0000  123456
+          3     -35.0000        6          5     A       4.8923       3.0139       0.8484       0.3620      -0.0000       0.0000  123456
+          4     -28.0000        6          5     A       1.8963     -10.0081       0.9257       0.6690      -0.0000       0.0000  123456

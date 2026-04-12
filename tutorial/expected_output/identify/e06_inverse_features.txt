@@ -1,0 +1,7 @@
+# Feature catalog from e06_inverse.txt
+# Beam: Beam 1.80 x 0.80 mas, PA -19.5 deg, dv = 0.425 km/s, r_geo = 1.20 mas
+# Pipeline: masertrack v1.1
+#  feature_id    vlsr_peak     vlsr_avg     vlsr_min     vlsr_max   vlsr_width  n_spots n_channels            x            y x_err_formal y_err_formal x_err_scatter y_err_scatter  x_err_wmean  y_err_wmean       I_peak       S_peak          rms          snr
+            2     -42.2100     -42.1267     -42.6300     -41.3700       1.6850        4          4     -12.7356       2.8461       0.0090       0.0090        0.0090        0.0214       0.0062       0.0145       5.0044       4.9637       0.0500     100.0880
+            1     -35.0000     -34.9692     -35.8400     -34.1600       2.1050        5          5      -0.0297       0.0172       0.0044       0.0044        0.0198        0.0326       0.0099       0.0125       9.9990       9.9978       0.0500     199.9800
+            3     -28.0000     -27.9448     -28.8400     -27.1600       2.1050        5          5      -3.1632     -12.5673       0.0130       0.0130        0.1105        0.0294       0.0028       0.0102       2.9968       2.9939       0.0500      59.9360

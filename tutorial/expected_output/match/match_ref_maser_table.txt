@@ -1,0 +1,9 @@
+# Reference maser table (auto-generated)
+# Edit corrections and re-run if needed
+# epoch        ref_vlsr match_vlsr     corr_x     corr_y
+  e01           -34.580    -34.580     0.0000     0.0000
+  e02           -35.420    -34.580    -0.0289    -0.0308
+  e03           -35.840    -34.580    -0.0233     0.0365
+  e04           -35.420    -34.580    -0.0390    -0.0835
+  e05           -35.000    -34.580     0.0101    -0.0655
+  e06           -35.840    -34.580     0.0192    -0.0444

@@ -174,6 +174,40 @@ Imai also developed `mfident`, a simpler feature identification program with two
 
 # Part 2: masertrack_match.py
 
+## File structure
+
+```
+Lines     Section
+------    -------
+1-22      Module docstring (credits, version, description)
+23-53     Imports (graceful failure with install instructions)
+55-56     Rainbow colormap and defaults
+58-95     File I/O (read_mt, parse_beam, write_table)
+97-163    Epoch parsing, grading, corrections parsing
+165-225   Reference maser correction (compute_ref_corrections)
+227-510   SingleModeMatch class (matching engine)
+  230-250   Constructor, epoch helpers
+  256-333   match() — growing-chain with velocity drift tracking
+  335-356   _compute_vel_drift() — linear V_LSR drift per group
+  358-383   _check_trajectories() — flag outlier epochs
+  385-402   _count_channels() — count persistent channels
+  404-480   build_tracked_spots/features — parallax fitting output
+  482-508   apply_corrections() — manual override handling
+510-935    MaserTrackMatch class (main pipeline)
+  514-530   Constructor
+  542-598   step1_parse — discover files, detect beam
+  600-680   step2_align — 3-layer inverse PR alignment
+  681-719   _find_normal_anchor, _spots_to_features helpers
+  733-810   step3_match — matching + corrections + comparison
+  836-935   step4_save — output + corrections template
+937-1260   Plotting functions (PNG)
+  940-1052  _plot_mode — per-mode 3×2 diagnostic
+  1054-1171 _plot_comparison — normal vs inverse
+  1173-1260 _plot_dashboard — per-mode summary
+1262-1448  Interactive HTML (plotly, 3×2)
+1450-1510  CLI and main
+```
+
 ## Concepts: spots, features, and groups
 
 - **Spot**: A single Gaussian fit to one emission peak in one velocity channel at one epoch. The raw output of AIPS SAD/MFIT.
@@ -360,31 +394,30 @@ Rows 1–2: Feature-level sky map, velocity tracking, RA/Dec vs time. Row 3: Spo
 ```
 Lines      Section
 ------     -------
-1-48       Module docstring (credits, version, references, changelog)
-50-120     Imports, constants, and default parameters
+1-41       Module docstring (credits, version, references, changelog)
+42-120     Imports, constants, and default parameters
 122-220    Input parsing (tracked files, coordinates)
 222-340    Parallax factors (DE440 ephemeris + analytical fallback)
-342-515    Core fitting engine (FitResult, design matrices, WLS solver)
-517-635    Error floor finding (per-coordinate bisection to χ²_red = 1)
-637-705    Cauchy outlier-tolerant fitting
-707-750    Bootstrap resampling (epoch-level)
+342-500    Core fitting engine (FitResult, design matrices, WLS solver)
+500-635    Error floor finding (per-coordinate bisection to χ²_red = 1)
+637-700    Cauchy outlier-tolerant fitting (Reid+2014)
+700-750    Bootstrap resampling (epoch-level)
 752-890    Distance estimation (1/π default, optional priors)
 892-985    Channel data extraction (spots → per-VLSR channel arrays)
-988-1290   Fitting functions (individual, group, combined)
-1295-1460  Iterative fitting (Imai+2013, kept as diagnostic)
-1463-1625  Outlier detection (epoch-level + Chauvenet group-level)
-1627-2160  ParallaxFitter class (orchestrates 9-step pipeline)
-2160-2400  Output writers (results table, 4 export formats)
-2400-2610  Interactive HTML — spot-level (3×3 + pi vs VLSR + PM)
-2610-2770  Interactive HTML — feature-level
-2770-2920  Proper motion plot (AU axes, Orosz-style scale bars)
-2920-3100  Parallax overview matrix (per-group + combined bootstrap)
-3100-3240  Per-group 3×3 parallax fit plot
-3240-3440  Feature-level 3×3 plot
-3440-3600  Summary and diagnostic plots
-3600-3750  Publication data + final parallax export
-3750-3900  Validation (Reid+2009 Sgr B2 regression test)
-3900-4450  CLI, main, self-test
+988-1310   Fitting functions (individual, group, combined)
+1310-1470  Outlier detection (epoch-level + Chauvenet group-level)
+1470-2000  ParallaxFitter class (orchestrates 9-step pipeline)
+2000-2250  Output writers (results table, 4 export formats)
+2250-2460  Interactive HTML — spot-level (3×3 + pi vs VLSR + PM)
+2460-2620  Interactive HTML — feature-level
+2620-2770  Proper motion plot (AU axes, Orosz-style scale bars)
+2770-2950  Parallax overview matrix (per-group + combined bootstrap)
+2950-3100  Per-group 3×3 parallax fit plot
+3100-3300  Feature-level 3×3 plot
+3300-3500  Summary and diagnostic plots
+3500-3700  Publication data + final parallax export
+3700-3850  Validation (Reid+2009 Sgr B2 regression test)
+3850-4300  CLI, main, self-test
 ```
 
 ## Parallax factors
@@ -439,7 +472,6 @@ Implemented following Burns et al. (2015, MNRAS 453, 3163) and Burns et al. (201
 - Reid, M. J. et al. (2009). ApJ 705, 1548 — Sgr B2 parallax (validation data)
 - Reid, M. J. et al. (2014). ApJ 783, 130 — √N correction, outlier tolerance
 - Reid, M. J. et al. (2019). ApJ 885, 131 — Galactic model, distance estimation
-- Imai, H. et al. (2013). PASJ 65, 28 — Iterative parallax fitting
 - Orosz, G. et al. (2017). MNRAS 468, L63 — IRAS 18113-2503 proper motions
 - Bailer-Jones, C. A. L. (2015). PASP 127, 994 — Exponential distance prior
 - Andriantsaralaza, M. et al. (2022). A&A 667, A74 — AGB distance priors

@@ -2,13 +2,15 @@
 """
 masertrack_identify.py - Part 1 of the masertrack pipeline
 ============================================================
-Version 1.0.0
+Version 1.1
 
 Convert VLBI spectral-line spot-fitting output into cleaned maser
 feature catalogs.
 
 Changelog
 ---------
+  v1.1 (2026-04) - Code cleanup, unified commenting style, tutorial,
+    output path respects --outdir for text files.
   v1.0.0 (2026-04-06) - First public release
     - Rainbow colormap (violet=blueshifted, red=redshifted)
     - Interactive HTML plots with linked sky maps
@@ -39,7 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-__version__ = "1.0.0"
+__version__ = "1.1"
 
 try:
     import numpy as np
@@ -1430,9 +1432,12 @@ def guided_mode(filepath, **ov):
 
     default_out = Path(filepath).stem + "_features.txt"
     out = input(f"\n  Output file? [{default_out}]: ").strip() or default_out
+    # Prepend outdir if output is just a filename
+    if not Path(out).is_absolute() and str(Path(out).parent) == ".":
+        out = str(m.outdir / out)
     m.save(out)
 
-    print(f"\n  Done!  Output files in current directory:")
+    print(f"\n  Done!  Output files in {m.outdir}:")
     print(f"  PNG plots:   *_s1.png through *_summary.png")
     if HAS_PLOTLY:
         print(f"  Interactive:  *_interactive.html (open in browser)")
@@ -1550,7 +1555,11 @@ def main():
         m = MaserTrackIdentify(args.input, save_plots=not args.no_plots,
                                show_plots=sp, **ov)
         m.run()
-        m.save(args.output or (Path(args.input).stem + "_features.txt"))
+        out = args.output or (Path(args.input).stem + "_features.txt")
+        # Prepend --outdir to output path if it's just a filename
+        if not Path(out).is_absolute() and str(Path(out).parent) == ".":
+            out = str(Path(args.outdir) / out)
+        m.save(out)
 
 
 if __name__ == "__main__":

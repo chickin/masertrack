@@ -1,0 +1,8 @@
+# VERA parameter file — G2 normal PR
+datafile = G2_normal.dat
+radec = 0  # 0=both, 1=RA only, -1=Dec only
+RA = 6.16666667  # decimal hours
+Dec = 20.50000000  # decimal degrees
+parallax = 1  # 1=solve for parallax
+epoch = 59846.1  # reference MJD
+# Results: pi=0.5152+/-0.0061 mas

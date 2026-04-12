@@ -1,16 +1,46 @@
 cff-version: 1.2.0
-message: "If you use masertrack in your research, please cite it as below."
+message: "If you use this software, please cite it as below."
 type: software
 title: "masertrack"
-abstract: "VLBI maser spot-to-feature identification, cross-epoch matching, and astrometric fitting pipeline."
+abstract: >-
+  VLBI maser spot-to-feature identification, cross-epoch matching,
+  and trigonometric parallax / proper motion fitting. Takes raw output
+  from AIPS MFIT/SAD Gaussian spot fitting and produces cleaned maser
+  feature catalogs, cross-epoch matched feature groups, and astrometric
+  fits with full diagnostic plots.
+version: "1.1"
+date-released: "2026-04-12"
+license: BSD-3-Clause
+repository-code: "https://github.com/chickin/masertrack"
 authors:
   - family-names: "Orosz"
     given-names: "Gabor"
+    orcid: "https://orcid.org/0000-0002-5526-990X"
 keywords:
   - VLBI
   - maser
   - astrometry
   - parallax
+  - proper motion
   - radio astronomy
-license: BSD-3-Clause
-repository-code: "https://github.com/chickin/masertrack"
+references:
+  - type: article
+    authors:
+      - family-names: "Burns"
+        given-names: "Ross A."
+    title: "Trigonometric parallax of IRAS 05137+3919, a water maser source in the Outer arm"
+    journal: "MNRAS"
+    volume: 453
+    start: 3163
+    year: 2015
+    doi: "10.1093/mnras/stv1836"
+  - type: article
+    authors:
+      - family-names: "Reid"
+        given-names: "Mark J."
+    title: "Trigonometric Parallaxes of Massive Star-Forming Regions. VI."
+    journal: "ApJ"
+    volume: 693
+    start: 397
+    year: 2009
+    doi: "10.1088/0004-637X/693/1/397"

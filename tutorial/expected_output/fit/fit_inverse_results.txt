@@ -1,0 +1,12 @@
+# Parallax fitting results (inverse PR)
+# masertrack_fit v1.1
+# RA=92.500000 deg, Dec=20.500000 deg
+# Ephemeris: auto
+# Error floor mode: auto
+# Bootstrap trials: 0
+#
+#       group_id           grade      n_channels        pi_group    sigma_pi_raw  sigma_pi_sqrtN        floor_ra       floor_dec        chi2_red      pi_feature       pi_cauchy         boot_16         boot_84  delta_bic_accel      D_mode_kpc        D_16_kpc        D_84_kpc            flag
+               1               B               3          0.4536          0.0144          0.0249          0.0084          0.0405          0.8975             ---          0.4534             ---             ---         13.7602          2.2045          2.0897          2.3327         OUTLIER
+               2               A               3          0.4827          0.0132          0.0228          0.0341          0.0341          1.0000             ---          0.4827             ---             ---         15.5011          2.0718          1.9785          2.1745              OK
+               3               A               5          0.4974          0.0108          0.0241          0.0401          0.0401          1.0000             ---          0.4932             ---             ---         30.9434          2.0105          1.9175          2.1129              OK
+               4               A               5          0.4857          0.0145          0.0323          0.0472          0.0472          1.0000             ---          0.4816             ---             ---         30.9434          2.0589          1.9303          2.2057              OK

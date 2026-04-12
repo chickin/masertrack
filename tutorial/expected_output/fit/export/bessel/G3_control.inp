@@ -1,0 +1,27 @@
+!  BeSSeL control file for G3
+      6.166667    ! RA in decimal hours
+     20.500000    ! Dec in decimal degrees
+   2022.7284    ! t_mid in years
+      0.0401    ! X data error floor (mas)
+      0.0401    ! Y data error floor (mas)
+   1.0      1.0      ! parallax in mas, solve-for
+   0.0      1.0      ! X-offset v=-35.84
+   0.0      1.0      ! X-slope
+   0.0      1.0      ! Y-offset
+   0.0      1.0      ! Y-slope
+   0.0      1.0      ! X-offset v=-35.42
+   0.0      1.0      ! X-slope
+   0.0      1.0      ! Y-offset
+   0.0      1.0      ! Y-slope
+   0.0      1.0      ! X-offset v=-35.00
+   0.0      1.0      ! X-slope
+   0.0      1.0      ! Y-offset
+   0.0      1.0      ! Y-slope
+   0.0      1.0      ! X-offset v=-34.58
+   0.0      1.0      ! X-slope
+   0.0      1.0      ! Y-offset
+   0.0      1.0      ! Y-slope
+   0.0      1.0      ! X-offset v=-34.16
+   0.0      1.0      ! X-slope
+   0.0      1.0      ! Y-offset
+   0.0      1.0      ! Y-slope

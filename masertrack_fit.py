@@ -14,21 +14,21 @@ Fitting methodology:
   - Individual fitting: per-channel π + μ (Burns+2015)
   - Group fitting: common π, independent μ per channel (Burns+2015)
   - Feature fitting: flux-weighted feature centroids (comparison)
-  - Iterative fitting: Imai+2013 residual subtraction approach
   - Error floors: automated bisection to χ²_red=1 (Reid+2009)
   - Outlier tolerance: Cauchy-tail likelihood (Reid+2014)
   - Bootstrap: 10⁴ epoch-resampled trials for robust uncertainties
-  - Distance: Bayesian posterior with Galactic disk prior
+  - Distance: 1/π default, optional Bayesian priors (disk/exponential)
 
 References:
   Reid et al. 2009, ApJ 693, 397  — BeSSeL fitting, error floors
   Reid et al. 2009, ApJ 705, 1548 — Sgr B2 parallax (validation data)
   Reid et al. 2014, ApJ 783, 130  — √N correction, outlier tolerance
   Burns et al. 2015, MNRAS 453, 3163 — individual/group/feature comparison
-  Imai et al. 2013, PASJ 65, 28   — iterative parallax fitting
   Bland-Hawthorn & Gerhard 2016, ARA&A 54, 529 — Galactic disk model
 
 Changelog:
+  v1.1  Code cleanup, unified commenting style, tutorial with synthetic
+        data, dead code removal (fit_iterative), bug fixes.
   v1.0  First release. Validated against Reid+2009 Sgr B2 (0.0σ).
         Features: group/individual/feature fitting, bootstrap, Chauvenet
         outlier detection, error floors, 3×3 diagnostic plots, interactive
@@ -47,7 +47,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import time as _time
 warnings.filterwarnings("ignore", category=UserWarning)
 
-__version__ = "1.0.0"
+__version__ = "1.1"
 
 try: import numpy as np
 except ImportError: print("numpy required"); sys.exit(1)
@@ -376,7 +376,7 @@ class FitResult:
         self.n_params = 0        # number of parameters
         self.n_channels = 0      # number of channels fitted
         self.coord_mode = "both" # "ra", "dec", or "both"
-        self.fit_type = ""       # "individual", "group", "feature", "iterative"
+        self.fit_type = ""       # "individual", "group", "feature"
 
 
 def build_design_matrix_individual(F_a, F_d, dt, coord="both"):
@@ -645,25 +645,6 @@ def apply_error_floor(sigma, eps_ra, eps_dec, interleaved=True):
 # =====================================================================
 #  OUTLIER-TOLERANT FITTING (Reid et al. 2014)
 # =====================================================================
-def cauchy_log_likelihood(resid, sigma):
-    """Compute log-likelihood using the Cauchy-tail formulation.
-
-    P(R) ∝ [1 - exp(-R^2/2)] / R^2
-
-    where R = resid / sigma. This has Gaussian behavior for small R
-    and Cauchy (1/R^2) tails for large R.
-
-    Reference: Reid et al. 2014, ApJ 783, 130; Sivia & Skilling 2006.
-    """
-    R2 = (resid / sigma)**2
-    # Avoid log(0) for R=0
-    R2_safe = np.maximum(R2, 1e-30)
-    # For small R: log((1-exp(-R2/2))/R2) ≈ log(1/2) - const
-    # For large R: log(1/R2) = -log(R2)
-    log_p = np.log(np.maximum(1.0 - np.exp(-R2 / 2.0), 1e-30)) - np.log(R2_safe)
-    return np.sum(log_p)
-
-
 def outlier_tolerant_fit(A, b, sigma, max_iter=20, tol=1e-6):
     """Iterative outlier-tolerant fitting using Cauchy-tail weights.
 
@@ -1325,166 +1306,6 @@ def fit_group(channels, ra_rad, dec_rad, t_ref_mjd, ephemeris="auto",
         rows = [r for m, r in row_to_mjd if abs(m - um) < 1.0]
         epoch_groups.append(np.array(rows))
     result._epoch_groups = epoch_groups
-
-    return result
-
-
-# =====================================================================
-#  IMAI ITERATIVE FITTING
-# =====================================================================
-def fit_iterative(channels, ra_rad, dec_rad, t_ref_mjd, ephemeris="auto",
-                  coord="both", error_floor_mode="auto",
-                  manual_floor_ra=0.0, manual_floor_dec=0.0,
-                  max_iter=10, verbose=False):
-    """Imai et al. (2013, PASJ 65, 28) iterative fitting approach.
-
-    1. Independent fits → per-channel pi
-    2. Compute mean parallactic motion, subtract from all data
-    3. Refit for proper motions only (with mean pi fixed)
-    4. Subtract proper motions, fit for common pi + residual offsets
-    5. Iterate steps 3-4 until convergence
-    """
-    min_ep = DEFAULTS["min_epochs_individual"]
-    usable = [ch for ch in channels if ch.n_usable >= min_ep]
-    if not usable:
-        return None
-
-    # Step 1: Independent fits
-    indiv_results = []
-    for ch in usable:
-        r = fit_individual_channel(ch, ra_rad, dec_rad, t_ref_mjd,
-                                    ephemeris=ephemeris, coord=coord,
-                                    error_floor_mode=error_floor_mode,
-                                    manual_floor_ra=manual_floor_ra,
-                                    manual_floor_dec=manual_floor_dec)
-        if r is not None:
-            indiv_results.append((ch, r))
-
-    if not indiv_results:
-        return None
-
-    # Mean parallax from independent fits (weighted)
-    pis = np.array([r.pi for _, r in indiv_results])
-    spis = np.array([r.sigma_pi for _, r in indiv_results])
-    w_pi = 1.0 / spis**2
-    pi_mean = np.sum(pis * w_pi) / np.sum(w_pi)
-
-    if verbose:
-        print(f"  Iterative step 1: individual pi values = {pis}")
-        print(f"  Weighted mean pi = {pi_mean:.4f} mas")
-
-    # Steps 2-5: Iterate
-    pi_current = pi_mean
-    for iteration in range(max_iter):
-        pi_prev = pi_current
-
-        # Step 2-3: Subtract parallactic motion, refit proper motions
-        pm_results = []
-        for ch, _ in indiv_results:
-            mask = ch.use_for_pi == 1
-            mjds = ch.mjds[mask]
-            F_a, F_d = get_parallax_factors_cached(ra_rad, dec_rad, mjds, method=ephemeris)
-            dt = (mjds - t_ref_mjd) / JULIANYEAR
-
-            # Subtract current parallax estimate from data
-            x_corr = ch.x[mask] - pi_current * F_a
-            y_corr = ch.y[mask] - pi_current * F_d
-
-            if coord == "both":
-                # Fit linear proper motion only: [mu_x, x0, mu_y, y0]
-                A_pm = np.zeros((2 * len(mjds), 4))
-                A_pm[0::2, 0] = dt
-                A_pm[0::2, 1] = 1.0
-                A_pm[1::2, 2] = dt
-                A_pm[1::2, 3] = 1.0
-                b_pm = np.empty(2 * len(mjds))
-                b_pm[0::2] = x_corr
-                b_pm[1::2] = y_corr
-                s_pm = np.empty(2 * len(mjds))
-                s_pm[0::2] = ch.x_err[mask]
-                s_pm[1::2] = ch.y_err[mask]
-            elif coord == "ra":
-                A_pm = np.zeros((len(mjds), 2))
-                A_pm[:, 0] = dt
-                A_pm[:, 1] = 1.0
-                b_pm = x_corr
-                s_pm = ch.x_err[mask]
-            elif coord == "dec":
-                A_pm = np.zeros((len(mjds), 2))
-                A_pm[:, 0] = dt
-                A_pm[:, 1] = 1.0
-                b_pm = y_corr
-                s_pm = ch.y_err[mask]
-
-            w_pm = 1.0 / s_pm**2
-            params_pm, _, _, _, _ = wls_solve(A_pm, b_pm, w_pm)
-            if params_pm is not None:
-                pm_results.append((ch, params_pm, F_a, F_d, mask))
-
-        # Step 4: Subtract proper motions, fit for common pi
-        all_resid_pi = []
-        all_F = []
-        all_w = []
-        for ch, params_pm, F_a, F_d, mask in pm_results:
-            mjds = ch.mjds[mask]
-            dt = (mjds - t_ref_mjd) / JULIANYEAR
-
-            if coord == "both":
-                x_resid = ch.x[mask] - params_pm[0] * dt - params_pm[1]
-                y_resid = ch.y[mask] - params_pm[2] * dt - params_pm[3]
-                for i in range(len(mjds)):
-                    all_resid_pi.append(x_resid[i])
-                    all_F.append(F_a[i])
-                    all_w.append(1.0 / ch.x_err[mask][i]**2)
-                    all_resid_pi.append(y_resid[i])
-                    all_F.append(F_d[i])
-                    all_w.append(1.0 / ch.y_err[mask][i]**2)
-            elif coord == "ra":
-                x_resid = ch.x[mask] - params_pm[0] * dt - params_pm[1]
-                for i in range(len(mjds)):
-                    all_resid_pi.append(x_resid[i])
-                    all_F.append(F_a[i])
-                    all_w.append(1.0 / ch.x_err[mask][i]**2)
-            elif coord == "dec":
-                y_resid = ch.y[mask] - params_pm[0] * dt - params_pm[1]
-                for i in range(len(mjds)):
-                    all_resid_pi.append(y_resid[i])
-                    all_F.append(F_d[i])
-                    all_w.append(1.0 / ch.y_err[mask][i]**2)
-
-        all_resid_pi = np.array(all_resid_pi)
-        all_F = np.array(all_F)
-        all_w = np.array(all_w)
-
-        # Fit for pi only: resid = pi * F
-        AtWA = np.sum(all_F**2 * all_w)
-        AtWb = np.sum(all_F * all_resid_pi * all_w)
-        if AtWA > 0:
-            pi_current = AtWb / AtWA
-            sigma_pi_current = 1.0 / np.sqrt(AtWA)
-        else:
-            break
-
-        if verbose:
-            print(f"  Iteration {iteration + 1}: pi = {pi_current:.4f} ± {sigma_pi_current:.4f} mas")
-
-        # Check convergence
-        if abs(pi_current - pi_prev) < 1e-8:
-            break
-
-    # Package result
-    result = FitResult()
-    result.fit_type = "iterative"
-    result.coord_mode = coord
-    result.pi = pi_current
-    result.sigma_pi = sigma_pi_current
-    result.n_channels = len(indiv_results)
-    result.n_data = len(all_resid_pi)
-    result.n_params = 1 + len(pm_results) * (4 if coord == "both" else 2)
-    resid_final = all_resid_pi - pi_current * all_F
-    result.chi2 = np.sum(resid_final**2 * all_w)
-    result.dof = max(result.n_data - result.n_params, 1)
-    result.chi2_red = result.chi2 / result.dof
 
     return result
 
@@ -4256,7 +4077,7 @@ def main():
                          "'wt_mean' (weighted mean, default), 'combined_A' etc. "
                          "When set, writes a dedicated pub_selected_*.csv with only that fit.")
     pa.add_argument("--quick", action="store_true",
-                    help="Quick mode: skip bootstrap, iterative, sub-coord fits")
+                    help="Quick mode: skip bootstrap")
     pa.add_argument("--no-plots", action="store_true", help="Disable plots")
     pa.add_argument("--verbose", action="store_true", default=True)
     pa.add_argument("--validate", action="store_true",

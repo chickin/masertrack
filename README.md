@@ -1,18 +1,31 @@
 # masertrack
 
-**VLBI maser spot-to-feature identification, cross-epoch matching, and astrometric fitting.**
+**Automated pipeline for VLBI maser astrometry: from raw spot-fitting output to trigonometric parallax.**
 
-| Script | Version | What it does | Input | Output |
-|--------|---------|-------------|-------|--------|
-| `masertrack_identify.py` | 1.0.0 | Spots → Features (per epoch) | MFIT/SAD spot table | Feature catalog + spot table |
-| `masertrack_match.py` | 1.0.0 | Features → Groups (cross-epoch) | Feature catalogs + epoch table | Matched groups + tracked positions |
-| `masertrack_fit.py` | 1.0.0 | Groups → Astrometry | Tracked positions | Parallax + proper motion |
+`masertrack` processes Gaussian-fitted maser emission peaks from VLBI spectral-line observations (AIPS MFIT/SAD) through three stages — spot identification, cross-epoch matching, and astrometric fitting — to produce trigonometric parallax and proper motion measurements. It handles both normal and inverse phase referencing, works with any VLBI array, and includes diagnostic plots, interactive HTML visualization, and export to standard formats (pmpar, BeSSeL, VERA, KaDai). Validated against published parallaxes (Reid et al. 2009, 0.0σ offset).
 
-[BSD-3-Clause](LICENSE) | [Cite](CITATION.cff)
+| Script | What it does | Input → Output |
+|--------|-------------|----------------|
+| `masertrack_identify.py` | Spots → Features (per epoch) | MFIT/SAD spot table → Feature catalog |
+| `masertrack_match.py` | Features → Groups (cross-epoch) | Feature catalogs + epoch table → Tracked positions |
+| `masertrack_fit.py` | Groups → Parallax | Tracked positions → π + μ fits |
 
-`masertrack` is a suite of Python scripts that take the raw output of VLBI spectral-line Gaussian spot fitting (AIPS MFIT/SAD, JMFIT) and produce cleaned maser feature catalogs, cross-epoch matched feature groups, and parallax/proper motion fits.
+[BSD-3-Clause](LICENSE) | [Cite](CITATION.cff) | [Tutorial](tutorial/TUTORIAL.md) | v1.1
 
-It works with any VLBI array: VERA, VLBA, LBA, EVN, KaVA, EAVN, or any other interferometric array that produces spectral-line image cubes with fitted emission peaks.
+## Concepts: spots → features → groups → parallax
+
+The pipeline processes data through four levels of abstraction:
+
+- **Spot**: A single Gaussian fit to one emission peak in one velocity channel at one epoch. The raw output of AIPS SAD/MFIT.
+- **Feature**: A spatially and spectrally coherent group of spots — the same maser cloud detected across adjacent velocity channels. Exists within a single epoch. Output of `masertrack_identify.py`.
+- **Group**: The same physical maser feature tracked across multiple epochs. Output of `masertrack_match.py`. This is the unit that gets parallax-fitted.
+- **Parallax**: Trigonometric distance from the annual parallax sinusoid in each group's position vs time. Output of `masertrack_fit.py`.
+
+The naming follows the hierarchy from the VLBI maser astrometry literature: spots → features (Sanna et al. 2010, A&A 517, A78), with "group" as the cross-epoch container (this work).
+
+## Getting started
+
+For a hands-on introduction with synthetic data and a known answer, see the **[Tutorial](tutorial/TUTORIAL.md)**.
 
 ## Requirements
 
@@ -448,8 +461,6 @@ See `CODE_BREAKDOWN.md` for a detailed explanation of the matching algorithm, al
 
 ---
 
----
-
 # masertrack_fit.py
 
 ## Quick start
@@ -631,7 +642,6 @@ Additionally validated externally against Krishnan+2015 G339.884 (LBA, 6.7 GHz C
 - Reid et al. 2019, ApJ 885, 131 — Galactic model, 1/π distance standard
 - Burns et al. 2015, MNRAS 453, 3163 — Individual/group/feature fitting comparison (S235AB-MIR)
 - Burns et al. 2017, MNRAS 467, L36 — AFGL 5142, feature fitting limitations
-- Imai et al. 2013, PASJ 65, 28 — Iterative parallax fitting
 - Orosz et al. 2017, MNRAS 468, L63 — IRAS 18113-2503 proper motions
 - Bailer-Jones 2015, PASP 127, 994 — Exponential distance prior
 - Andriantsaralaza et al. 2022, A&A 667, A74 — AGB distance priors

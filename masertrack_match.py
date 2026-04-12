@@ -2,7 +2,7 @@
 """
 masertrack_match.py - Part 2 of the masertrack pipeline
 =========================================================
-Version 1.0.0
+Version 1.1
 
 Cross-epoch matching of maser features and channel-level tracking
 for parallax (pi) and proper motion (mu) fitting.
@@ -12,14 +12,21 @@ Output: Matched group catalog, tracked spots/features, diagnostic plots
 
 See README.md for full documentation and CODE_BREAKDOWN.md for internals.
 
-Changelog: v1.0 first release | v0.8 docs, spot flux markers | v0.7 per-mode dashboards,
-  residual diagnostics, error floor | v0.6 velocity drift, corrections
-  workflow, normal PR anchor | v0.5 reference spot correction
+Changelog:
+  v1.1  Code cleanup, unified commenting style, tutorial.
+  v1.0  First release. Growing-chain matching with velocity drift
+        tracking, normal/inverse PR separation, quasar-based alignment,
+        reference spot correction, grading system (A-F), trajectory
+        smoothness checking, corrections file workflow, multi-panel
+        Plotly HTML.
 
 Credits: Gabor Orosz (design), Claude (code, 2026)
 License: BSD-3-Clause
 Repository: https://github.com/chickin/masertrack
 """
+# =====================================================================
+#  IMPORTS -- graceful failure with install instructions
+# =====================================================================
 from __future__ import annotations
 import argparse, os, sys, textwrap, re
 from dataclasses import dataclass, field
@@ -28,69 +35,122 @@ from typing import Dict, List, Tuple, Optional
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-__version__ = "1.0.0"
+__version__ = "1.1"
 
-try: import numpy as np
-except ImportError: print("numpy required"); sys.exit(1)
-try: import pandas as pd
-except ImportError: print("pandas required"); sys.exit(1)
 try:
-    import matplotlib; import matplotlib.pyplot as plt
+    import numpy as np
+except ImportError:
+    print("Error: numpy is required.  Install:  pip3 install numpy"); sys.exit(1)
+try:
+    import pandas as pd
+except ImportError:
+    print("Error: pandas is required.  Install:  pip3 install pandas"); sys.exit(1)
+try:
+    import matplotlib
+    import matplotlib.pyplot as plt
     HAS_MPL = True
-except ImportError: HAS_MPL = False
+except ImportError:
+    HAS_MPL = False
+    print("Note: matplotlib not found; no PNG plots.  pip3 install matplotlib")
 try:
     from adjustText import adjust_text
     HAS_ADJTEXT = True
-except ImportError: HAS_ADJTEXT = False
+except ImportError:
+    HAS_ADJTEXT = False
 try:
-    import plotly.graph_objects as go; from plotly.subplots import make_subplots
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
     HAS_PLOTLY = True
-except ImportError: HAS_PLOTLY = False
+except ImportError:
+    HAS_PLOTLY = False
 
 CMAP_NAME = "rainbow"
+# =====================================================================
+#  RAINBOW COLORMAP -- red=redshifted, blue/violet=blueshifted
+# =====================================================================
 PLOTLY_RAINBOW = [[0,"rgb(128,0,255)"],[0.15,"rgb(0,0,255)"],[0.3,"rgb(0,180,255)"],
     [0.45,"rgb(0,220,0)"],[0.6,"rgb(255,255,0)"],[0.75,"rgb(255,165,0)"],
     [0.9,"rgb(255,50,0)"],[1.0,"rgb(200,0,0)"]]
 
-DEFAULTS = {"match_radius_factor":3.0, "vel_tolerance_channels":4,
-            "max_pm":5.0, "min_epochs":3, "outlier_sigma":3.0}
+# =====================================================================
+#  DEFAULT PARAMETERS -- all documented, all overridable via CLI
+# =====================================================================
+# All spatial thresholds scale with beam geometric mean.
+# All velocity thresholds scale with channel spacing.
+DEFAULTS = {
+    # Match radius = this factor x beam geometric mean (generous to
+    # allow for proper motion + position uncertainty between epochs)
+    "match_radius_factor": 3.0,
+    # Velocity tolerance in channel spacings (catches V drift of
+    # ~1-3 km/s/yr common in H2O masers over ~1 yr baseline)
+    "vel_tolerance_channels": 4,
+    # Max proper motion in mas/yr (upper limit for Galactic masers:
+    # solar motion + rotation ~2-4 mas/yr, internal ~1-5 mas/yr)
+    "max_pm": 5.0,
+    # Min epochs for a group to be displayed (3 = minimum for pi fitting)
+    "min_epochs": 3,
+    # Trajectory outlier threshold (MAD-based robust sigma)
+    "outlier_sigma": 3.0,
+}
 
 # =====================================================================
 #  FILE I/O
 # =====================================================================
 def read_mt(path):
+    """Read a masertrack_identify output file (features or spots).
+
+    Handles the 'sidelobe_reason' column which can contain spaces
+    or be empty, causing split() to produce the wrong number of tokens.
+
+    Returns (DataFrame, beam_string).
+    """
     hdr, data, beam = None, [], None
     for ln in open(path):
         ls = ln.rstrip()
         if ls.strip().startswith("#"):
             p = ls.lstrip("# ").split()
-            if any(c in p for c in ["vlsr","vlsr_peak","feature_id"]): hdr = p
-            if "Beam" in ls and "mas" in ls: beam = ls
+            if any(c in p for c in ["vlsr","vlsr_peak","feature_id"]):
+                hdr = p
+            if "Beam" in ls and "mas" in ls:
+                beam = ls
             continue
-        if ls.strip(): data.append(ls)
-    if not hdr or not data: return pd.DataFrame(), beam
+        if ls.strip():
+            data.append(ls)
+    if not hdr or not data:
+        return pd.DataFrame(), beam
+
     nc = len(hdr)
     si = hdr.index("sidelobe_reason") if "sidelobe_reason" in hdr else -1
     rows = []
     for ln in data:
         p = ln.split()
+        # Handle empty or multi-word sidelobe_reason column
         if si >= 0:
-            if len(p) == nc-1: p.insert(si, "")
+            if len(p) == nc - 1:
+                p.insert(si, "")
             elif len(p) > nc:
-                extra = len(p)-nc
+                extra = len(p) - nc
                 merged = " ".join(p[si:si+extra+1])
                 p = p[:si] + [merged] + p[si+extra+1:]
-        while len(p) < nc: p.append("")
+        while len(p) < nc:
+            p.append("")
         rows.append(p[:nc])
+
     df = pd.DataFrame(rows, columns=hdr)
     for c in df.columns:
-        if c in ["sidelobe_reason","sidelobe"]: continue
-        try: df[c] = pd.to_numeric(df[c])
-        except: pass
+        if c in ["sidelobe_reason", "sidelobe"]:
+            continue
+        try:
+            df[c] = pd.to_numeric(df[c])
+        except (ValueError, TypeError):
+            pass
     return df, beam
 
+
 def parse_beam(bl):
-    if not bl: return None,None,None
+    """Extract beam major, minor (mas) and channel spacing (km/s) from header string."""
+    if not bl:
+        return None, None, None
     m = re.search(r'(\d+\.\d+)\s*x\s*(\d+\.\d+)\s*mas.*?dv\s*=\s*(\d+\.\d+)', bl)
     return (float(m.group(1)),float(m.group(2)),float(m.group(3))) if m else (None,None,None)
 
@@ -100,7 +160,7 @@ def write_table(df, path, header=""):
     for c in int_cols:
         if c in df.columns:
             try: df[c] = df[c].astype(int)
-            except: pass
+            except (ValueError, TypeError): pass
     lines = [f"# {header}", f"# masertrack_match v{__version__}"]
     cw = {}
     for c in df.columns:
@@ -148,7 +208,7 @@ def parse_epoch_table(path):
                          inv_qso_dec_s=float(p[8]) if len(p)>8 else 0)
             if e.n_stations < 4: e.flag = f"{e.n_stations}sta"
             epochs.append(e)
-        except: continue
+        except (ValueError, IndexError): continue
     return epochs
 
 def grade_group(n_ep, n_unflagged, n_ch):
@@ -188,7 +248,7 @@ def parse_corrections(path):
         elif p[0].upper() == "GROUP":
             gid_str = p[1].replace("G","").replace("g","")
             try: gid = int(gid_str)
-            except: continue
+            except ValueError: continue
             if gid not in corr["groups"]: corr["groups"][gid] = []
             if len(p) >= 4 and p[3].upper() == "EXCLUDE":
                 corr["groups"][gid].append(("exclude",p[2]))
@@ -976,7 +1036,7 @@ class MaserTrackMatch:
         ax.set_xlabel("RA (mas)"); ax.set_ylabel("Dec (mas)")
         ax.invert_xaxis(); ax.set_aspect("equal")
         try: ax.set_box_aspect(1)
-        except: pass
+        except AttributeError: pass
         sm=plt.cm.ScalarMappable(cmap=cmap,norm=norm_v)
         plt.colorbar(sm,ax=ax,label="V_LSR (km/s)")
         for ei,ec in enumerate(ep_list):
@@ -1114,7 +1174,7 @@ class MaserTrackMatch:
             if all_x: ax.set_xlim(xlim); ax.set_ylim(ylim)
             ax.set_aspect("equal")
             try: ax.set_box_aspect(1)
-            except: pass
+            except AttributeError: pass
             n_ab=sum(1 for g in good if g["grade"] in "AB")
             ax.set_title(f"{title}: {len(good)} groups, {n_ab} A/B")
 

@@ -1,0 +1,16 @@
+# Ground truth for tutorial verification
+#
+# Parallax: 0.500 mas  (D = 2.000 kpc)
+# PM(RA):   -2.000 mas/yr
+# PM(Dec):  +1.000 mas/yr
+#
+# Both PR modes should recover the same parallax.
+# Normal PR: positions are absolute -> fit directly
+# Inverse PR: positions are relative to reference maser;
+#   quasar shifts in epoch table restore absolute motion
+#
+# Features:
+#  F1: V=-35 km/s, 5 spots, 10 Jy, Grade A [INV REF] (e01,e02,e03,e04,e05,e06)
+#  F2: V=-42 km/s, 4 spots, 5 Jy, Grade A (e01,e02,e03,e04,e05,e06)
+#  F3: V=-28 km/s, 5 spots, 3 Jy, Grade A (e01,e02,e03,e04,e05,e06)
+#  F4: V=-50 km/s, 3 spots, 2 Jy, Grade B (e01,e02,e04,e05)

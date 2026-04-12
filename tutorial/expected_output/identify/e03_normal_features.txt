@@ -1,0 +1,7 @@
+# Feature catalog from e03_normal.txt
+# Beam: Beam 1.82 x 0.80 mas, PA -21.6 deg, dv = 0.425 km/s, r_geo = 1.20 mas
+# Pipeline: masertrack v1.1
+#  feature_id    vlsr_peak     vlsr_avg     vlsr_min     vlsr_max   vlsr_width  n_spots n_channels            x            y x_err_formal y_err_formal x_err_scatter y_err_scatter  x_err_wmean  y_err_wmean       I_peak       S_peak          rms          snr
+            2     -42.2100     -42.1271     -42.6300     -41.3700       1.6850        4          4      -7.4181       5.9407       0.0090       0.0090        0.0115        0.0138       0.0035       0.0104       4.9653       5.0014       0.0500      99.3060
+            1     -35.0000     -34.9689     -35.8400     -34.1600       2.1050        5          5       5.6366       2.9138       0.0044       0.0044        0.0070        0.0434       0.0046       0.0100      10.0160      10.0058       0.0500     200.3200
+            3     -28.0000     -27.9462     -28.8400     -27.1600       2.1050        5          5       2.6557     -10.1827       0.0131       0.0131        0.0257        0.0577       0.0059       0.0145       2.9909       2.9867       0.0500      59.8180
